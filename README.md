@@ -6,30 +6,49 @@ I run a 4 session arch setup with Niri, gnome, sway, and hyprland. Here are my d
 
 This guide covers the dependencies and manual steps required to set up this Arch Linux environment.
 
-1. System Dependencies (pacman)
+Install System Dependencies (pacman):
 
-These packages must be installed from the official Arch repositories.
-Bash
+    Core GUI: sway, hyprland, niri, gnome
 
-# Core window managers & display
-sudo pacman -S sway hyprland niri gnome
+    Core Apps: waybar, hyprlock, swayidle, wofi, pulseaudio (or pipewire-pulse), nm-applet, udiskie, polkit-gnome
 
-# Core applications & utilities
-sudo pacman -S waybar hyprlock swayidle wofi
-sudo pacman -S polkit-gnome nm-applet udiskie thunar
-sudo pacman -S ghostty
+    Location Service: geoclue
 
-# Audio
-sudo pacman -S pulseaudio # (or pipewire-pulse)
+    Update Checking: pacman-contrib (for checkupdates)
 
-# Location services
-sudo pacman -S geoclue
+    DNS Service: cloudflared
 
-# Update checking
-sudo pacman -S pacman-contrib # (Provides 'checkupdates')
+    Rust Toolchain: rustup
 
-# Build tools for Rust
-sudo pacman -S openssl pkg-config
+    Build Essentials: openssl, pkg-config, libc (usually included, but good to list)
+
+    (User Apps): ghostty, thunar, etc.
+
+API Key Setup (Manual Steps):
+
+    Google Geolocation (for geoclue.conf)
+
+    OpenWeatherMap (OWM) (for Waybar config)
+
+Critical System Configuration (Manual Steps):
+
+    Disable systemd-resolved: You must ensure /etc/resolv.conf is a static file, not a symlink managed by systemd-resolved.
+
+        sudo systemctl disable --now systemd-resolved
+
+        sudo rm /etc/resolv.conf
+
+        sudo touch /etc/resolv.conf
+
+        (Then populate it with a fallback, like nameserver 1.1.1.1)
+
+Install Custom Rust Apps:
+
+    (Add cloudflare-toggle to this list)
+
+Post-Install Config:
+
+    (Add the custom/cloudflared module to your Waybar config templates, ensuring it has "signal": 10.)
 
 2. API Key Setup (Manual Steps)
 
