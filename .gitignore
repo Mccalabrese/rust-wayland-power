@@ -1,0 +1,6 @@
+/sysScripts/**/target/
+/.config/rust-dotfiles/config.toml
+*.cache
+**/*.cache
+.cache/
+/sysScripts/**/swaybg_last_wallpaper
