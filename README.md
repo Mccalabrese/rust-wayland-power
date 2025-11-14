@@ -1,133 +1,204 @@
-# Arch-multi-session-dot-files
+# My Arch Dotfiles
 
-**Nothing is ready to upload yet Im currently editing and cleaning for API's or secrets and using the readme here to keep track things**
-I run a 4 session arch setup with Niri, gnome, sway, and hyprland. Here are my dots
-🚀 Dotfiles Setup Guide (Running List)
+This is my obsessive setup for a minimal, multi-compositor Arch Linux environment. I run niri mostly but sometimes hyprland (docked on external monitor), and a custom sway session (iGPU-only, hyper optimized for battery). I also have gnome. Gnome is there when a full desktop is needed. Some things, such as annotating on students screens in zoom, just will not work on anything but a full desktop. My other configs do assume you have gnome and all its dependencies.
 
-This guide covers the dependencies and manual steps required to set up this Arch Linux environment.
+The whole point is efficiency and performance. This setup idles at 4.8W on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti).
 
-Install System Dependencies (pacman):
+This is a personal repo, not a beginner's guide. It assumes you know what you're doing.
 
-    Core GUI: sway, hyprland, niri, gnome
+The Philosophy: Why Rust?
 
-    Core Apps: waybar, hyprlock, swayidle, wofi, pulseaudio (or pipewire-pulse), nm-applet, udiskie, polkit-gnome
+You'll see all my helper scripts are written in Rust. I'm not a "Rust-acean," but I am a pragmatist.
 
-    Location Service: geoclue
+    Why not Python? Because Python is the absolute worst. It's a slow, dependency-hell nightmare. I don't trust its supply chain, and honestly, I just don't vibe with it. I'll take C-style syntax any day.
 
-    Update Checking: pacman-contrib (for checkupdates)
+    Why not shell scripts? My old scripts were a Rube Goldberg machine of pgrep, jq, sed, awk, and cat all piped together. They were fragile, slow, and "worked like crap."
 
-    DNS Service: cloudflared
+    But why not Zig? I love Zig. It's the future. But the sad reality is that its API changes so fast, I can't even learn the language before a pacman -Syu breaks everything I've written.
 
-    Rust Toolchain: rustup
+    So, Rust. It gives me the C-like syntax and performance I want, with a stable ecosystem (cargo) that actually works. It's the best tool for the job right now. If the senior kernel devs hate rust, I stand with them, I make no comment or express no opinion on what should or should not be in the kernel.
 
-    Build Essentials: openssl, pkg-config, libc (usually included, but good to list)
+    Why ghostty? It is the best. 
 
-    (User Apps): ghostty, thunar, etc.
+## 1. Core Dependencies (pacman)
 
-API Key Setup (Manual Steps):
-
-    Google Geolocation (for geoclue.conf)
-
-    OpenWeatherMap (OWM) (for Waybar config)
-
-Critical System Configuration (Manual Steps):
-
-    Disable systemd-resolved: You must ensure /etc/resolv.conf is a static file, not a symlink managed by systemd-resolved.
-
-        sudo systemctl disable --now systemd-resolved
-
-        sudo rm /etc/resolv.conf
-
-        sudo touch /etc/resolv.conf
-
-        (Then populate it with a fallback, like nameserver 1.1.1.1)
-
-Install Custom Rust Apps:
-
-    (Add cloudflare-toggle to this list)
-
-Post-Install Config:
-
-    (Add the custom/cloudflared module to your Waybar config templates, ensuring it has "signal": 10.)
-
-2. API Key Setup (Manual Steps)
-
-This setup requires two external API keys.
-
-    Google Geolocation API:
-
-        Create a project in the Google Cloud Console and enable the "Geolocation API".
-
-        Generate an API key.
-
-        Edit /etc/geoclue/geoclue.conf (requires sudo).
-
-        Add your key to the [wifi-scan] section: url=https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_GOOGLE_KEY_HERE
-
-        Restart the service: sudo systemctl restart geoclue.service.
-
-    OpenWeatherMap (OWM) API:
-
-        Create a free account at OpenWeatherMap and generate an API key.
-
-        This key will be placed directly into your Waybar config files in Step 5.
-
-3. Install Rust Toolchain
-
-We use rustup to manage the Rust compiler.
+This won't be a one-click install. You need to build the base.
 Bash
 
-# Install rustup
-sudo pacman -S rustup
-# Run the installer as your normal user
-rustup-init
+### The compositors and base DE (for services)
+sudo pacman -S sway hyprland niri gnome
 
-4. Build & Install Custom Rust Apps
+### Core UI tools
+sudo pacman -S waybar hyprlock swayidle wofi rofi
 
-These scripts are built from source and installed to your user's local bin directory.
+### Key system services & utilities
+sudo pacman -S polkit-gnome nm-applet udiskie geoclue
+sudo pacman -S pulseaudio # or pipewire-pulse, your call
+
+### Our custom scripts will need these
+sudo pacman -S cloudflared pacman-contrib # (for 'checkupdates')
+
+### User apps I use
+sudo pacman -S ghostty thunar
+
+### Build toolchain for our Rust apps
+sudo pacman -S rustup openssl pkg-config libc
+
+## 2. Manual System Config (The "Gotchas")
+
+You must do these steps as sudo. My scripts depend on this.
+
+### geoclue (for Weather)
+
+The default Mozilla backend is dead. We use Google.
+
+Get a Google Geolocation API key.
+
+Edit /etc/geoclue/geoclue.conf.
+
+    Find the [wifi-scan] section and add your key:
+    Ini, TOML
+
+    [wifi-scan]
+    url=https://www.googleapis.com/geolocation/v1/geocluate?key=YOUR_GOOGLE_KEY_HERE
+
+    Restart the service: sudo systemctl restart geoclue.service.
+
+### systemd-resolved (for DNS)
+
+My cloudflare-toggle script manually writes to /etc/resolv.conf. This only works if systemd-resolved isn't fighting you.
+
+    sudo systemctl disable --now systemd-resolved
+
+    sudo rm /etc/resolv.conf (or back it up)
+
+    sudo touch /etc/resolv.conf
+
+    echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf (to set a sane default)
+
+### zsh and $PATH
+
+My scripts (and niri/sway/hyprland) will fail if they can't find the Rust binaries. You must add cargo to your path in a way that non-interactive sessions can read.
+
+Create this file: ~/.config/environment.d/99-custom-path.conf
+
+Put this one line in it:
+
+    PATH=$HOME/.cargo/bin:$HOME/.pub-cache/bin:$PATH
+
+Log out and log back in. ~/.zshrc is the wrong place for this.
+
+## 3. Building the Rust Apps
+
+This repo contains the source code for all my custom scripts in the ~/sysScripts directory. You need to install them.
 Bash
 
-# First, add cargo to your $PATH
-# (This step will be done by your .zshrc/.zshenv)
-export PATH="$HOME/.cargo/bin:$PATH"
+### First, init rustup
+    rustup-init
 
-# Go to your sysScripts or dotfiles repo...
-cd /path/to/your/dotfiles
+### Add cargo to your current shell (you'll log out later)
+    source "$HOME/.cargo/env"
 
-# Install the weather app
-cd waybar-weather
-cargo install --path .
+### Now, install everything
+    cd ~/sysScripts/waybar-switcher
+    cargo install --path .
 
-# Install the update-check app
-cd ../update-check
-cargo install --path .
+    cd ~/sysScripts/waybar-weather
+    cargo install --path .
 
-# Install the sway-workspace app
-cd ../sway-workspace
-cargo install --path .
+    cd ~/sysScripts/sway-workspace
+    cargo install --path .
 
-# Install the waybar-switcher app
-cd ../waybar-switcher
-cargo install --path .
+    cd ~/sysScripts/update-check
+    cargo install --path .
 
-5. Post-Install Configuration
+    cd ~/sysScripts/cloudflare-toggle
+    cargo install --path . # This installs both cf-status and cf-toggle
 
-Your configuration files need to be "universal" by using $HOME and pointing to your OWM API key.
+    cd ~/sysScripts/wallpaper-manager
+    cargo install --path . # This installs wp-daemon, wp-select, and wp-apply
 
-    Session Startup Scripts (~/.config/hypr/hyprland.conf, ~/.config/sway/config, ~/.config/niri/niri.conf):
+## 4. Setting Up Your Configs & Secrets
 
-        Find the exec-once or spawn-at-startup line for waybar-switcher.
+I don't commit my API keys. You shouldn't either.
 
-        Ensure it uses the absolute path with $HOME: exec-once = $HOME/.cargo/bin/waybar-switcher
+Symlink the "safe" configs:
+Bash
 
-    Waybar Configs (~/.config/waybar/hyprConfig.jsonc, etc.):
+    ln -s ~/dotfiles/.config/hypr ~/.config/hypr
+    ln -s ~/dotfiles/.config/sway ~/.config/sway
+    ln -s ~/dotfiles/.config/niri ~/.config/niri
+    # ... etc for nvim, tmux, etc.
 
-        Find the custom/weather module.
+Copy the "secret" templates: My Waybar configs need an OWM key, so they are templates.
+Bash
 
-        Change its exec line to use $HOME and include your API key: "exec": "OWM_API_KEY=YOUR_OWM_KEY_HERE $HOME/.cargo/bin/waybar-weather",
+    cp ~/dotfiles/.config/waybar/hyprConfig.jsonc.template ~/.config/waybar/hyprConfig.jsonc
+    cp ~/dotfiles/.config/waybar/swayConfig.jsonc.template ~/.config/waybar/swayConfig.jsonc
+    cp ~/dotfiles/.config/wayGbar/niriConfig.jsonc.template ~/.config/waybar/niriConfig.jsonc
 
-        Find the custom/updater module.
+Inject your key: Run this sed command to find the placeholder and replace it with your real key.
+Bash
 
-        Change its exec line to use $HOME: "exec": "$HOME/.cargo/bin/update-check",
+    echo "Please paste your OpenWeatherMap (OWM) API Key:"
+    read OWM_KEY
+    sed -i "s/__OWM_KEY_PLACEHOLDER__/$OWM_KEY/g" ~/.config/waybar/*.jsonc
 
-        (Note: The sway-workspace script is called by Waybar, but your swayConfig.jsonc likely doesn't exist yet! We'll need to create it and add the module.)
+Add a .gitignore: Make one in your ~/dotfiles root. You must ignore your real config files.
+Code snippet
+
+    # Ignore compiled Rust code
+    **/target/
+
+    # Ignore secret-holding configs
+    .config/waybar/hyprConfig.jsonc
+    .config/waybar/swayConfig.jsonc
+    .config/waybar/niriConfig.jsonc
+
+    # Ignore cache files
+    .cache/
+
+## 5. Final Startup & Waybar Configs
+
+My setup relies on these Rust binaries. Your startup scripts and Waybar configs must point to them using $HOME.
+
+### Startup Scripts
+
+hyprland.conf:
+Ini, TOML
+
+    exec-once = $HOME/.cargo/bin/waybar-switcher
+    exec-once = swww-daemon --namespace hypr
+    exec-once = $HOME/.cargo/bin/wp-daemon
+    bind = SUPER, W, exec, $HOME/.cargo/bin/wp-select
+
+niri.conf:
+Code snippet
+
+    spawn-at-startup "$HOME/.cargo/bin/waybar-switcher"
+    spawn-at-startup "swww-daemon" "--namespace" "niri"
+    spawn-at-startup "$HOME/.cargo/bin/wp-daemon"
+    binds {
+        Mod+W { spawn "$HOME/.cargo/bin/wp-select"; }
+    }
+
+sway/config:
+Ini, TOML
+
+    exec $HOME/.cargo/bin/waybar-switcher
+    exec $HOME/.cargo/bin/wp-daemon
+    exec swaybg -i "$(cat $HOME/.cache/swaybg_last_wallpaper)" -m fill &
+    bindsym Mod4+w exec $HOME/.cargo/bin/wp-select
+
+### Waybar Configs (Example custom/weather)
+
+In all your .jsonc files:
+JSON
+
+"custom/weather": {
+    "exec": "OWM_API_KEY=YOUR_KEY_HERE $HOME/.cargo/bin/waybar-weather",
+    "return-type": "json",
+    "interval": 900
+},
+
+*(My waybar-switcher copies the correct config, which already has this. The sed command fixes the key.)*
