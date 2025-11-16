@@ -53,13 +53,16 @@ fn run_as_user() -> Result<()> {
         .success();
     
     let mode = if is_running { "--stop" } else { "--start" };
-
+    let content_on = &config.resolv_content_on;
+    let content_off = &config.resolv_content_off;
     // Run pkexec 
     let self_exe = env::current_exe()
         .context("Failed to get path to own executable")?;
     let status = Command::new("pkexec")
         .arg(self_exe)
         .arg(mode)
+        .arg(content_on)
+        .arg(content_off)
         .status()
         .context("Failed to run pkexec")?;
 
@@ -81,12 +84,7 @@ fn run_as_user() -> Result<()> {
 }
 
 // --- 4. run_as_root ---
-fn run_as_root(mode: &str) -> Result<()> {
-    // Load config for resolv.conf content
-    let config = load_config()
-        .context("Failed to load config for root")?
-        .cloudflare_toggle;
-
+fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
     if mode == "--start" {
         // Start service
         Command::new("systemctl")
@@ -99,7 +97,7 @@ fn run_as_root(mode: &str) -> Result<()> {
             .context("Failed to start systemctl service")?;
 
         // Write resolv.conf from config
-        fs::write("/etc/resolv.conf", &config.resolv_content_on)
+        fs::write("/etc/resolv.conf", content_on)
             .context("Failed to write /etc/resolv.conf")?;
         Ok(())
 
@@ -115,7 +113,7 @@ fn run_as_root(mode: &str) -> Result<()> {
             .context("Failed to stop systemctl service")?;
         
         // Write resolv.conf from config
-        fs::write("/etc/resolv.conf", &config.resolv_content_off)
+        fs::write("/etc/resolv.conf", content_off)
             .context("Failed to write /etc/resolv.conf")?;
         Ok(())
     } else {
@@ -126,8 +124,11 @@ fn run_as_root(mode: &str) -> Result<()> {
 // --- 5. Main ---
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
-    if let Some(mode) = args.get(1) {
-        run_as_root(mode)
+    if args.len() > 1 {
+        let mode = &args[1];
+        let content_on = args.get(2).context("Missing content_on argument")?;
+        let content_off = args.get(3).context("Missing content_off argument")?;
+        run_as_root(mode, content_on, content_off)
     } else {
         run_as_user()
     }

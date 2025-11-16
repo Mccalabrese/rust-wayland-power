@@ -7,9 +7,9 @@ terminal = "ghostty"
 # Settings for our keybind launcher
 # -------------------------------
 [kb_launcher.compositor_args]
-hyprland = ["--class", "KeybindCheatSheetApp"]
-sway = ["--app-id", "KeybindCheatSheetApp"]
-niri = []
+hyprland = ["--title=KeybindCheatSheetApp"]
+sway = ["--title=KeybindCheatSheetApp"]
+niri = ["--title=KeybindCheatSheet"]
 default = []
 
 [[kb_launcher.sheet]]
@@ -19,6 +19,14 @@ file = "~/.config/nvim/keybinds_nvim.txt"
 [[kb_launcher.sheet]]
 name = "Hyprland"
 file = "~/.config/hypr/keybinds_hyprland.txt"
+
+[[kb_launcher.sheet]]
+name = "Niri"
+file = "~/.config/niri/keybinds_niri.txt"
+
+[[kb_launcher.sheet]]
+name = "Sway"
+file = "~/.config/sway/keybinds_sway.txt"
 # -------------------------------
 # [waybar_weather]
 # Settings for our weather module
@@ -28,7 +36,7 @@ file = "~/.config/hypr/keybinds_hyprland.txt"
 # We'll refactor waybar-weather to read this key
 owm_api_key = "YOUR_SECRET_OWM_KEY_HERE"
 # -------------------------------
-# [wallpaper_manager]
+# [wallpaper_manager]:
 # Settings for our wallpaper daemon/selector
 # -------------------------------
 [wallpaper_manager]

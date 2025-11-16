@@ -99,17 +99,9 @@ spawn-at-startup "wl-paste" "--type" "image" "--watch" "cliphist" "store"
 
 spawn-at-startup "xwayland-satellite"
 // --- IDLE MANAGEMENT (replaces hypridle, calls hyprlock) ---
-spawn-sh-at-startup r#"
-iDIR="$HOME/.config/swaync/images/ja.png"; export iDIR;
-swayidle -w \
-    timeout 200 'brightnessctl set 0%' \
-        resume 'brightnessctl set 60%' \
-    timeout 600 'pidof hyprlock || hyprlock &' \
-    timeout 630 'wlr-randr --output eDP-1 --off; wlr-randr --output DP-2 --off; wlr-randr --output DP-3 --off; wlr-randr --output DP-4 --off' \
-        resume 'wlr-randr --output eDP-1 --on; wlr-randr --output DP-2 --on; wlr-randr --output DP-3 --on; wlr-randr --output DP-4 --on' \
-    timeout 1200 'systemctl suspend' \
-    before-sleep 'pidof hyprlock || hyprlock &'
-"#
+
+spawn-sh-at-startup "iDIR=\"$HOME/.config/swaync/images/ja.png\"; export iDIR; swayidle -w timeout 200 'brightnessctl set 0%' resume 'brightnessctl set 60%' timeout 600 'pidof hyprlock || hyprlock &' timeout 630 'wlr-randr --output eDP-1 --off; wlr-randr --output DP-2 --off; wlr-randr --output DP-3 --off; wlr-randr --output DP-4 --off' resume 'wlr-randr --output eDP-1 --on; wlr-randr --output DP-2 --on; wlr-randr --output DP-3 --on; wlr-randr --output DP-4 --on' timeout 1200 'systemctl suspend' before-sleep 'pidof hyprlock || hyprlock &'"
+
 // Hotkey Overlay
 hotkey-overlay {
     skip-at-startup // Disable the initial help popup
@@ -127,34 +119,53 @@ animations {
 }
 
 // Window Rules
-window-rule { // Firefox PiP Floating
-    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+
+// KeybindCheatSheet
+window-rule {
+    match title="KeybindCheatSheet"
     open-floating true
 }
-window-rule { // Authentication dialogs
-    match title="(?i)Authentication Required"
-    open-floating true // Niri might float dialogs anyway
+
+// Firefox PiP
+window-rule {
+    match app-id=r"firefox$"
+    match title=r"^Picture-in-Picture$"
+    open-floating true
 }
+
+// Authentication dialogs
+window-rule {
+    match title=r"(?i)Authentication Required"
+    open-floating true
+}
+
+// Firefox Sign-in Popups
 window-rule {
     match app-id="firefox"
-    // The ^ means the title must *start with* "Sign in"
-    match title=r#"^Sign in"#
-    exclude title=r#"— Mozilla Firefox"#
-    exclude title=r#"Mozilla Firefox"# 
+    match title=r"^Sign in"
+    exclude title="— Mozilla Firefox"
+    exclude title="Mozilla Firefox"
     open-floating true
 }
+
+// Border / Clip (applies to all)
 window-rule {
     draw-border-with-background false
     clip-to-geometry true
 }
+
+// Unfocused opacity
 window-rule {
-    match is-focused=false 
+    match is-focused=false
     opacity 0.75
 }
+
+// Focused opacity
 window-rule {
     match is-focused=true
     opacity 0.88
 }
+
 cursor {
     xcursor-theme "Adwaita"
     xcursor-size 24
@@ -183,7 +194,7 @@ binds {
     Mod+Q repeat=false { close-window; }
     //suspend
     Mod+Alt+S hotkey-overlay-title="Lock and Suspend" {
-       spawn-sh "pidof hyprlock >/dev/null || hyprlock & sleep 0.5; systemctl suspend"
+        spawn-sh "pidof hyprlock >/dev/null || hyprlock & sleep 0.5; systemctl suspend"
     }
 
     // Focus Movement

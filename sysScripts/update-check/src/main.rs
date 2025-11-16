@@ -69,14 +69,21 @@ fn run_check(command_parts: &[String]) -> Result<usize> {
         .output()
         .context(format!("Failed to spawn command: '{}'", cmd_name))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Check command failed:\n{}", stderr);
-    }
-
     let stdout = String::from_utf8_lossy(&output.stdout);
     let count = stdout.lines().count();
-    Ok(count)
+    if output.status.success() {
+        return Ok(count);
+    }
+    if output.status.code() == Some(1) {
+        if count == 0 {
+            return Ok(0);
+        }
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    anyhow::bail!("Check command failed (exit code: {}):\n{}",
+        output.status.code().unwrap_or(-1),
+        stderr
+    );
 }
 
 // --- JSON Output Functions ---

@@ -1,0 +1,3 @@
+My Neovim Keybinds:
+-------------------
+Leader + f = Find File
