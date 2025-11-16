@@ -73,7 +73,7 @@
 	"format-time": "{H}h {M}min",
 	"tooltip": true,
 	"tooltip-format": "{timeTo} {power}w",
-	"on-click-right": "$HOME/.config/hypr/scripts/Wlogout.sh",
+	"on-click-right": "$HOME/.cargo/bin/power-menu",
 	"on-click": "ghostty --hold -e sudo tlp-stat -s"
 },
 
@@ -271,7 +271,7 @@
 	"format-icons": [
 		"󰤯", "󰤟", "󰤢", "󰤥", "󰤨"
 	],
-	"on-click-right": "$HOME/.config/hypr/scripts/WaybarScripts.sh --nmtui"
+	"on-click-right": "ghostty -e nmtui"
 },
 
 "network#speed": {
@@ -371,10 +371,10 @@
 "wireplumber": {
 	"format": "{icon} {volume} %",
 	"format-muted": " Mute",
-	"on-click": "$HOME/.config/hypr/scripts/Volume.sh --toggle",
+	"on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
 	"on-click-right": "pavucontrol -t 3",
-	"on-scroll-up": "$HOME/.config/hypr/scripts/Volume.sh --inc",
-	"on-scroll-down": "$HOME/.config/hypr/scripts/Volume.sh --dec",
+	"on-scroll-up": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+	"on-scroll-down": "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
 	"format-icons": [
 		"", "", "󰕾", ""
 	],

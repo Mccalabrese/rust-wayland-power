@@ -97,3 +97,29 @@ resolv_content_off = "nameserver 1.1.1.1\nnameserver 1.0.0.1"
 # For cf-toggle.rs (user)
 bar_process_name = "waybar"
 bar_signal_num = 10 # The '10' from 'SIGRTMIN() + 10'
+
+[power_menu]
+# Base margins for a 1.0x scaled display at each resolution tier
+# Our Rust app will multiply these by your monitor's actual scale.
+columns = 6 # Default number of columns
+
+[power_menu.res_2160]
+top_margin = 600
+bottom_margin = 600
+
+[power_menu.res_1600]
+top_margin = 400
+bottom_margin = 400
+
+[power_menu.res_1440]
+top_margin = 400
+bottom_margin = 400
+
+[power_menu.res_1080]
+top_margin = 200
+bottom_margin = 200
+
+[power_menu.res_720]
+top_margin = 50
+bottom_margin = 50
+columns = 3 # This resolution uses a different layout

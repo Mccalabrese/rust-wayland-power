@@ -1,0 +1,64 @@
+## Niri Keybinds
+(Mod = Super Key)
+
+---
+## 🚀 Apps & Rust Binaries
+* Mod + T       - Terminal (ghostty)
+* Mod + D       - Rofi (App Launcher)
+* Mod + B       - Default Browser
+* Mod + E       - File Manager (thunar)
+* Mod + W       - Wallpaper Selector (wp-select)
+* Mod + Shift + P - Keybind Launcher (kb-launcher)
+* Ctrl + Alt + P  - Power Menu (power-menu)
+
+## ⚙️ System & Session
+* Mod + Q         - Close Active Window
+* Super + Alt + L - Lock Screen (hyprlock)
+* Mod + Alt + S   - Lock and Suspend
+* Mod + Shift + E - Quit Niri
+* Ctrl + Alt + Delete - Quit Niri
+
+## 🪟 Window & Column
+* Mod + O          - Toggle Overview
+* Mod + F          - Maximize Column
+* Mod + Shift + F  - Fullscreen Window
+* Mod + Space      - Toggle Window Floating
+* Mod + [ / ]      - Stack window from Left / Unstack window to Left
+* Mod + . / ,      - Stack window from Right / Unstack window to Right
+* Mod + R          - Cycle Column Width
+* Mod + Shift + R  - Cycle Window Height
+
+## 🏃 Focus Movement
+* Mod + h/j/k/l (or Arrows) - Focus Left / Down / Up / Right
+* Mod + Shift + h/j/k/l     - Focus Monitor Left / Down / Up / Right
+
+## 📦 Window Movement
+* Mod + Ctrl + h/j/k/l - Move window/column Left / Down / Up / Right
+* Mod + Shift + Ctrl + h/j/k/l - Move window/column to Monitor Left / Down / Up / Right
+
+## 🔢 Workspaces
+* Mod + Page_Down / Page_Up - Next / Previous Workspace
+* Mod + Ctrl + Page_Down / Page_Up - Move window to Next / Previous Workspace
+* Mod + [1-9] - Switch to Workspace 1-9
+* Mod + Ctrl + [1-9] - Move window to Workspace 1-9
+
+## 🔊 Hardware & Media
+* XF86AudioRaiseVolume - Volume Up (5%+)
+* XF86AudioLowerVolume - Volume Down (5%-)
+* XF86AudioMute        - Toggle Mute (Speakers)
+* XF86AudioMicMute     - Toggle Mute (Microphone)
+* XF86MonBrightnessUp  - Brightness Up (5%+)
+* XF86MonBrightnessDown- Brightness Down (5%-)
+
+## 🖥️ Screenshots
+* Print       - Screenshot (Whole Output)
+* Ctrl + Print  - Screenshot (Screen)
+* Alt + Print   - Screenshot (Active Window)
+
+---
+## 📜 Legacy Scripts (To Be Rewritten)
+* Mod + Alt + R - Refresh (Waybar, etc.)
+* Mod + Alt + E - Rofi (Emoji Selector)
+* Mod + S       - Rofi (Google Search)
+* Mod + Alt + V - Rofi (Clipboard Manager)
+* Mod + Alt + C - Rofi (Calculator)

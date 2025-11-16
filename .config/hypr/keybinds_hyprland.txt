@@ -1,0 +1,77 @@
+## Hyprland Keybinds
+($mainMod = Super Key)
+
+---
+## 🚀 Apps & Rust Binaries
+* $mainMod + D       - Rofi (App Launcher)
+* $mainMod + B       - Default Browser
+* Ctrl + Alt + T   - Terminal (ghostty)
+* $mainMod + E       - File Manager (thunar)
+* $mainMod + W       - Wallpaper Selector (wp-select)
+* $mainMod + Shift + P - Keybind Launcher (kb-launcher)
+* Ctrl + Alt + P   - Power Menu (power-menu)
+
+## ⚙️ System & Session
+* $mainMod + Q            - Close Active Window
+* Ctrl + Alt + L        - Lock Screen (hyprlock)
+* Ctrl + Alt + Delete - Exit Hyprland
+* $mainMod + R            - Reload Hyprland Config
+* $mainMod + Shift + N    - Toggle Notification Center (swaync)
+
+## 🪟 Window & Layout
+* $mainMod + Shift + F - Toggle Fullscreen (Real)
+* $mainMod + Ctrl + F  - Toggle Fullscreen (Fake)
+* $mainMod + Space     - Toggle Floating
+* $mainMod + Shift + R - "Dropdown" Terminal
+* $mainMod + Alt + Space - Toggle All-Float Mode (all windows float)
+* $mainMod + G         - Toggle Group
+* $mainMod + Ctrl + Tab - Cycle focus within a group
+* $mainMod + P         - Toggle Pseudo-Tiling (Dwindle)
+* $mainMod + Shift + I - Toggle Split Direction (Dwindle)
+* $mainMod + M         - Set split ratio to 0.3
+* Alt + Tab            - Bring focused window to top
+
+## 🏃 Focus & Movement
+* $mainMod + h/j/k/l - Focus Left / Down / Up / Right
+* $mainMod + Ctrl + [Arrows] - Move active window
+* $mainMod + Shift + [Arrows] - Resize active window
+* $mainMod + Alt + [Arrows] - Swap active window
+
+## 🔢 Workspaces
+* $mainMod + [1-0] - Switch to Workspace 1-10
+* $mainMod + Shift + [1-0] - Move window to Workspace 1-10
+* $mainMod + Ctrl + [1-0] - Move window to Workspace (Silently)
+* $mainMod + Tab        - Next Workspace
+* $mainMod + Shift + Tab - Previous Workspace
+* $mainMod + . / ,      - Next / Previous Workspace
+* $mainMod + U         - Toggle Special Workspace
+* $mainMod + Shift + U - Move window to Special Workspace
+
+## 🖱️ Mouse Binds
+* $mainMod + Scroll Down/Up - Next / Previous Workspace
+* $mainMod + Left Click + Drag  - Move Window
+* $mainMod + Right Click + Drag - Resize Window
+
+## 🔊 Hardware & Media
+* XF86AudioRaiseVolume - Volume Up (5%+)
+* XF86AudioLowerVolume - Volume Down (5%-)
+* XF86AudioMute        - Toggle Mute (Speakers)
+* XF86AudioMicMute     - Toggle Mute (Microphone)
+* XF86MonBrightnessUp  - Brightness Up (5%+)
+* XF86MonBrightnessDown- Brightness Down (5%-)
+* XF86Sleep            - Suspend System
+
+---
+## 📜 Legacy Scripts (To Be Rewritten)
+* $mainMod + Alt + R - Refresh (Waybar, etc.)
+* $mainMod + Alt + E - Rofi (Emoji Selector)
+* $mainMod + Alt + V - Rofi (Clipboard Manager)
+* $mainMod + Alt + C - Rofi (Calculator)
+* $mainMod + Ctrl + O - Toggle Active Window Opacity
+* $mainMod + Print      - Screenshot (Now)
+* $mainMod + Shift + S - Screenshot (Swappy)
+* $mainMod + Shift + Prt - Screenshot (Area)
+* $mainMod + Ctrl + Prt  - Screenshot (in 5 sec)
+* Alt + Print           - Screenshot (Active Window)
+* $mainMod + Alt + Scroll  - Zoom In / Out
+* XF86Rfkill            - Toggle Airplane Mode

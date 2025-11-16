@@ -299,9 +299,9 @@ binds {
     Mod+Alt+E { spawn "$HOME/.config/hypr/scripts/RofiEmoji.sh"; }
     Mod+S { spawn "$HOME/.config/hypr/scripts/RofiSearch.sh"; }
     Mod+Alt+V { spawn "$HOME/.config/hypr/scripts/ClipManager.sh"; }
-    Mod+Control+Alt+B { spawn "pkill" "-SIGUSR1" "waybar"; }
-    Mod+Alt+C { spawn "$HOME/.config/hypr/UserScripts/RofiCalc.sh"; }
+    Mod+Alt+C { spawn "$HOME/.config/hypr/scripts/RofiCalc.sh"; }
     Mod+Shift+P { spawn "$HOME/.cargo/bin/kb-launcher"; }
+    Control+Alt+P { spawn "$HOME/.cargo/bin/power-menu"; }
     // Exit Niri
     Mod+Shift+E { quit; }
     Ctrl+Alt+Delete { quit; } // Alt is Mod1

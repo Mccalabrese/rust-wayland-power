@@ -33,7 +33,7 @@ sudo pacman -S sway hyprland niri gnome
 
 ### Core UI tools
 
-sudo pacman -S waybar hyprlock swayidle wofi rofi
+sudo pacman -S waybar hyprlock swayidle wofi rofi wlogout hypridle
 
 ### Key system services & utilities
 
@@ -42,7 +42,7 @@ sudo pacman -S pulseaudio # or pipewire-pulse, your call
 
 ### Our custom scripts will need these
 
-sudo pacman -S cloudflared pacman-contrib # (for 'checkupdates')
+sudo pacman -S cloudflared pacman-contrib fakeroot # (for 'yay' and 'checkupdates')
 
 ### User apps I use
 
@@ -96,6 +96,28 @@ Put this one line in it:
 
 Log out and log back in. ~/.zshrc is the wrong place for this.
 
+### Clean Session Switching
+
+If you find that tray icons ('nm-applet', 'waybar') are duplicating when you switch sessions, it's because your old session's apps aren't being killed.
+
+1. Edit your 'logind.conf':
+
+bash:
+
+    sudo nano /etc/systemd/logind.conf
+
+2. Find the line '#KillUserProcesses=no' and change it to 'yes':
+
+ini:
+
+    killUserProcesses=yes
+
+3. Restart the service to apply:
+
+bash:
+
+    sudo systemctl restart systemd-logind.service
+
 ## 3. The Central Config (Your API Keys)
 
 All of our custom Rust scripts are controlled by one file. This is where you put your API keys and personal paths.
@@ -136,6 +158,7 @@ Bash
     cd sysScripts/wallpaper-manager && cargo install --path .
     cd sysScripts/kb-launcher && cargo install --path .
     cd sysScripts/updater && cargo install --path .
+    cd sysScripts/power-menu && cargo install --path .
 
 ## 5. Setting Up Your Configs & Secrets
 
@@ -163,3 +186,24 @@ Our Rust scripts handle all secrets. You just need to copy the Waybar config tem
 ### Neovim Setup
 
 This config uses LazyVim. The configuration is minimal. To use it, you must follow their installation guide first. My personal tweaks can be found in ~/.config/nvim/lua/plugins/.
+
+### Pro-Tip: Clean Up Greetd Session List
+
+If `greetd-tuigreet` shows you a huge list of sessions you don't use (like "GNOME Classic", "GNOME on Xorg", etc.), you can tell `pacman` to *never install* those `.desktop` files.
+
+1. Edit your `pacman.conf`:
+
+  bash
+
+    sudo nano /etc/pacman.conf
+
+2.  Find the `NoExtract` line (it will be commented out) and add the paths to the session files you want to block.
+
+**Example:**
+  ini
+
+    # Pacman won't extract specified files
+    #NoExtract =
+    NoExtract = usr/share/wayland-sessions/gnome-classic.desktop usr/share/xsessions/gnome-classic.desktop    usr/share/xsessions/gnome-xorg.desktop
+    ```
+3.  After saving, run a full system update. `pacman` will see these files are no longer "managed" and will ask you to remove them, cleaning up your login manager.

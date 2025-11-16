@@ -1,3 +1,78 @@
-My Neovim Keybinds:
--------------------
-Leader + f = Find File
+## nvim Keybinds
+(N=Normal, V=Visual, I=Insert)
+
+---
+## 🧭 Essential Navigation
+* j/k (or <Down>/<Up>) - N/V - Move cursor (smartly, wraps lines)
+* <C-h> - N - Navigate pane/window Left (Vim or Tmux)
+* <C-j> - N - Navigate pane/window Down (Vim or Tmux)
+* <C-k> - N - Navigate pane/window Up (Vim or Tmux)
+* <C-l> - N - Navigate pane/window Right (Vim or Tmux)
+* <Esc> - N/I/S - Clear search highlight & stop snippet
+
+## 🪟 Window & Tab Management
+* <leader> -  - N - Split Window Below
+* <leader> |  - N - Split Window Right
+* <leader> wd - N - Delete/Close Window
+* <leader> wm - N - Toggle Window Zoom
+* <leader> uz - N - Toggle Zen Mode (distraction-free)
+* <C-Up>     - N - Increase Window Height
+* <C-Down>   - N - Decrease Window Height
+* <C-Right>  - N - Increase Window Width
+* <C-Left>   - N - Decrease Window Width
+* <S-h> / [b - N - Previous Buffer
+* <S-l> / ]b - N - Next Buffer
+* <leader> bb - N - Switch to Other Buffer
+* <leader> bd - N - Delete Buffer
+* <leader> bo - N - Delete Other Buffers
+* <leader> <tab><tab> - N - New Tab
+* <leader> <tab>d   - N - Close Current Tab
+* <leader> <tab>]   - N - Next Tab
+* <leader> <tab>[   - N - Previous Tab
+* <leader> <tab>l   - N - Last Tab
+* <leader> <tab>f   - N - First Tab
+* <leader> <tab>o   - N - Close Other Tabs
+
+## ✍️ Editing & Text
+* <A-j> / <A-k> - N/V/I - Move line(s) Down / Up
+* < / >         - V - Indent / Un-indent block
+* gco           - N - Add comment line Below
+* gcO           - N - Add comment line Above
+* , / . / ;     - I - Add an undo breakpoint
+* <C-s>         - All - Save File
+
+## 🧠 Searching
+* n / N - N/V/O - Go to Next / Previous search result
+* <leader> ur - N - Redraw / Clear Search Highlight
+
+## 💻 Terminals
+* <leader> fT - N - Open Floating Terminal (Current Dir)
+* <leader> ft - N - Open Floating Terminal (Project Root)
+* <C-/>      - N/T - Open Floating Terminal (Project Root)
+
+##  git (via Lazygit & Snacks)
+* <leader> gg - N - Open Lazygit (Project Root)
+* <leader> gG - N - Open Lazygit (Current Dir)
+* <leader> gl - N - Show Git Log (Project Root)
+* <leader> gf - N - Show Git History for Current File
+* <leader> gb - N - Show Git Blame for Current Line
+* <leader> gB - N/V - Open file on GitHub in browser
+* <leader> gY - N/V - Copy file GitHub URL to clipboard
+
+## 📋 Diagnostics & Lists
+* <leader> cd - N - Show Line Diagnostics
+* ]d / [d     - N - Next / Previous Diagnostic
+* ]e / [e     - N - Next / Previous Error
+* ]w / [w     - N - Next / Previous Warning
+* <leader> xq - N - Toggle Quickfix List
+* <leader> xl - N - Toggle Location List
+* ]q / [q     - N - Next / Previous Quickfix Item
+
+## ⚙️ Misc (LazyVim & Utilities)
+* <leader> l  - N - Show LazyVim UI
+* <leader> L  - N - Show LazyVim Changelog
+* <leader> fn - N - Create New File
+* <leader> cf - N/V - Format Code
+* <leader> qq - N - Quit All Windows
+* <leader> ui - N - Inspect LSP/Treesitter position
+* <leader> K  - N - Show documentation (Keywordprg)
