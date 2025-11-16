@@ -4,12 +4,14 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use shellexpand;
+use toml;
 
 // --- Config Structs ---
 
 #[derive(Deserialize, Debug)]
 struct UpdateCheckConfig {
-    command: Vec<String>,
+    command_string: String,
     cache_file: String,
     stale_icon: String,
     error_icon: String,
@@ -58,16 +60,12 @@ fn save_cache(count: usize, cache_path: &Path) -> Result<()> {
 
 // --- Check Function (returns a count) ---
 
-fn run_check(command_parts: &[String]) -> Result<usize> {
-    let cmd_name = command_parts.get(0)
-        .context("Update check 'command' in config.toml is empty")?;
-    
-    let args = &command_parts[1..];
-
-    let output = Command::new(cmd_name)
-        .args(args)
+fn run_check(command_string: &str) -> Result<usize> {
+    let output = Command::new("/usr/bin/bash")
+        .arg("-c")
+        .arg(command_string)
         .output()
-        .context(format!("Failed to spawn command: '{}'", cmd_name))?;
+        .context(format!("Failed to spawn command: '{}'", command_string))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let count = stdout.lines().count();
@@ -141,7 +139,7 @@ fn main() -> Result<()> {
     
     let cache_path = PathBuf::from(shellexpand::tilde(&config.cache_file).to_string());
 
-    match run_check(&config.command) {
+    match run_check(&config.command_string) {
         Ok(count) => {
             // Success! Save to cache and print.
             if let Err(e) = save_cache(count, &cache_path) {

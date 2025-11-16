@@ -138,13 +138,16 @@ window-rule {
     match title=r"(?i)Authentication Required"
     open-floating true
 }
-
+window-rule {
+  match app-id=r"^firefox"
+  open-floating false
+}
 // Firefox Sign-in Popups
 window-rule {
-    match app-id="firefox"
-    match title=r"^Sign in"
-    exclude title="— Mozilla Firefox"
-    exclude title="Mozilla Firefox"
+    match app-id=r"firefox"
+    match title=r#"^Sign in"#
+    exclude title=r#"— Mozilla Firefox"#
+    exclude title=r#"Mozilla Firefox"#
     open-floating true
 }
 

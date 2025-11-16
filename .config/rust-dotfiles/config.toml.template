@@ -57,7 +57,7 @@ rofi_theme_override = "element-icon { size: 20%; }"
 
 [update_check]
 # The command to run. We use a list for command and args.
-command = ["checkupdates"]
+command_string = "/usr/bin/nm-online -q -t 5 && /usr/bin/yay -Qqu"
 # The file to cache the last known count
 cache_file = "~/.cache/update-check.json"
 # Icon to show if check fails but cache is available
@@ -87,7 +87,7 @@ sway_config = "~/.config/waybar/swayConfig.jsonc"
 # For cf-status.rs
 text_on = "󰅟"  # Example: "ON" or an icon
 class_on = "on"
-text_off = "󰅞" # Example: "OFF" or an icon
+text_off = "⚠︎" # Example: "OFF" or an icon
 class_off = "off"
 
 # For cf-toggle.rs (root)

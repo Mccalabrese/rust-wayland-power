@@ -71,9 +71,8 @@
       "wlr/taskbar"
     ],
     "modules-right": [
-      "hyprland/window",
-      "custom/cloudflared",
       "tray",
+      "custom/cloudflared",
       "custom/lock",
       "group/notify",
       "custom/power"
