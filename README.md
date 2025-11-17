@@ -2,7 +2,7 @@
 
 This is my obsessive setup for a minimal, multi-compositor Arch Linux environment. I run niri mostly but sometimes hyprland (docked on external monitor), and a custom sway session (iGPU-only, hyper optimized for battery). I also have gnome. Gnome is there when a full desktop is needed. Some things, such as annotating on students screens in zoom, just will not work on anything but a full desktop. My other configs do assume you have gnome and all its dependencies.
 
-**Credit to JaKooLit for the original inspiration. I have since heavily modified and optimized it for my needs. Many theme options and examples come from him**
+**Credit to JaKooLit for the original inspiration. I have since heavily modified and optimized it for my needs. Many theme options and examples are available on <https://github.com/JaKooLit/Hyprland-Dots>**
 
 The whole point is efficiency and performance. This setup idles at 4.8W on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti).
 
@@ -161,6 +161,7 @@ Bash
     cd sysScripts/power-menu && cargo install --path .
     cd sysScripts/rfkill-manager && cargo install --path .
     cd sysScripts/clip-manager && cargo install --path .
+    cd sysScripts/emoji-picker && cargo install --path .
 
 ## 5. Setting Up Your Configs & Secrets
 
