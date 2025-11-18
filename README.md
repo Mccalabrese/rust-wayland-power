@@ -46,6 +46,14 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 * **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
 * **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
 
+<p align="center">
+  <img src="screenshots/niri.png" width="32%" alt="Niri Overview"/>
+  <img src="screenshots/sway.png" width="32%" alt="Sway iGPU-only Idle"/>
+</p>
+<p align="center">
+  <img src="screenshots/hyprland.png" width="32%" alt="Sway iGPU-only Idle"/>
+</p>
+
 # Installation Guide
 
 ## 1. Core Dependencies (pacman)
