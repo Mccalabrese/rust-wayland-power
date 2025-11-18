@@ -28,7 +28,7 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
   <img src="screenshots/gnome.png" width="32%" alt="Gnome Desktop"/>
   </p>
 <p align="center">
-  <img src="screenshots/hyprland.png" width="32%" alt="Hyprland Desktop"/>
+  <img src="screenshots/hyprland.png" width="90%" alt="Hyprland Desktop"/>
 </p>
 
 ## Table of Contents
@@ -40,19 +40,19 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
 - [The Philosophy: Why Rust?](#the-philosophy-why-rust)
 - [My Custom Rust Binaries](#my-custom-rust-binaries)
 - [Installation Guide](#installation-guide)
-    - [1. Core Dependencies (pacman)](#1-core-dependencies-pacman)
-    - [2. Manual System Config (The "Gotchas")](#2-manual-system-config-the-gotchas)
-    - [3. The Central Config (Your API Keys)](#3-the-central-config-your-api-keys)
-    - [4. Building the Rust Apps](#4-building-the-rust-apps)
-    - [5. Setting Up Your Configs & Secrets](#5-setting-up-your-configs--secrets)
-    - [6. Final Startup](#6-final-startup)
+  - [1. Core Dependencies (pacman)](#1-core-dependencies-pacman)
+  - [2. Manual System Config (The "Gotchas")](#2-manual-system-config-the-gotchas)
+  - [3. The Central Config (Your API Keys)](#3-the-central-config-your-api-keys)
+  - [4. Building the Rust Apps](#4-building-the-rust-apps)
+  - [5. Setting Up Your Configs & Secrets](#5-setting-up-your-configs--secrets)
+  - [6. Final Startup](#6-final-startup)
 - [Power Management Issues on my Hardware](#power-management-issues-on-my-hardware)
-    - [dGPU Power Management (NVIDIA Hybrid Laptops)](#dgpu-power-management-nvidia-hybrid-laptops)
-        - [1. Switch to greetd](#1-switch-to-greetd)
-        - [2. BIOS Setup](#2-bios-setup)
-        - [3. Set Kernel Module Parameters (The "Golden Config")](#3-set-kernel-module-parameters-the-golden-config)
-        - [4. Set udev Rule](#4-set-udev-rule)
-        - [5. Rebuild Everything](#5-rebuild-everything)
+  - [dGPU Power Management (NVIDIA Hybrid Laptops)](#dgpu-power-management-nvidia-hybrid-laptops)
+    - [1. Switch to greetd](#1-switch-to-greetd)
+    - [2. BIOS Setup](#2-bios-setup)
+    - [3. Set Kernel Module Parameters (The "Golden Config")](#3-set-kernel-module-parameters-the-golden-config)
+    - [4. Set udev Rule](#4-set-udev-rule)
+    - [5. Rebuild Everything](#5-rebuild-everything)
 
 </details>
 
@@ -74,27 +74,25 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
 
 All the helper scripts in this repo have been rewritten in Rust for maximum performance and stability. Here is what each one does:
 
-* **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
-* **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
-* **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
-* **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
-* **`cloudflare-toggle`**:
-  * **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare HTTPS over DNS.
-  * **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare HTTPS over DNS on or off using `pkexec`.
-* **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
-  * **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
-  * **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
-  * **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
-* **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
-* **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
-* **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
-* **`rfkill-manager`**:
-  * `--status`: The airplane icon in your SwayNC, showing if "Airplane Mode" is on or off.
-  * `--toggle`: The `on-click` action (in your `swaync` panel or on a keybind) that toggles all wireless (Wi-Fi & Bluetooth) on or off.
-* **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
-* **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
-
- 
+- **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
+- **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
+- **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
+- **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
+- **`cloudflare-toggle`**:
+  - **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare HTTPS over DNS.
+  - **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare HTTPS over DNS on or off using `pkexec`.
+- **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
+  - **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
+  - **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
+  - **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
+- **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
+- **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
+- **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
+- **`rfkill-manager`**:
+  - `--status`: The airplane icon in your SwayNC, showing if "Airplane Mode" is on or off.
+  - `--toggle`: The `on-click` action (in your `swaync` panel or on a keybind) that toggles all wireless (Wi-Fi & Bluetooth) on or off.
+- **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
+- **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
 
 # Installation Guide
 
@@ -192,6 +190,7 @@ Log out and log back in. ~/.zshrc is the wrong place for this.
 If you find that tray icons ('nm-applet', 'waybar') are duplicating when you switch sessions, it's because your old session's apps aren't being killed.
 
 1. Edit your 'logind.conf':
+
 ```bash
 sudo nano /etc/systemd/logind.conf
 ```
@@ -204,6 +203,7 @@ killUserProcesses=yes
 ```
 
 3. Restart the service to apply:
+
 ```bash
 sudo systemctl restart systemd-logind.service
 ```
@@ -319,7 +319,7 @@ If `greetd-tuigreet` shows you a huge list of sessions you don't use (like "GNOM
 sudo nano /etc/pacman.conf
 ```
 
-2.  Find the `NoExtract` line (it will be commented out) and add the paths to the session files you want to block.
+2. Find the `NoExtract` line (it will be commented out) and add the paths to the session files you want to block.
 
 **Example:**
     ini
@@ -329,7 +329,8 @@ sudo nano /etc/pacman.conf
 #NoExtract =
 NoExtract = usr/share/wayland-sessions/gnome-classic.desktop usr/share/xsessions/gnome-classic.desktop    usr/share/xsessions/gnome-xorg.desktop
 ```
-3.  After saving, run a full system update. `pacman` will see these files are no longer "managed" and will ask you to remove them, cleaning up your login manager.
+
+3. After saving, run a full system update. `pacman` will see these files are no longer "managed" and will ask you to remove them, cleaning up your login manager.
 
 # Power Management Issues on my Hardware
 
