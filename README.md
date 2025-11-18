@@ -22,6 +22,32 @@ The Philosophy: Why Rust?
 
 *Why ghostty? It is the best.*
 
+## My Custom Rust Binaries
+
+All the helper scripts in this repo have been rewritten in Rust for maximum performance and stability. Here is what each one does:
+
+* **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
+* **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
+* **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
+* **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
+* **`cloudflare-toggle`**:
+  * **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare HTTPS over DNS.
+  * **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare HTTPS over DNS on or off using `pkexec`.
+* **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
+  * **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
+  * **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
+  * **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
+* **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
+* **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
+* **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
+* **`rfkill-manager`**:
+  * `--status`: The airplane icon in your SwayNC, showing if "Airplane Mode" is on or off.
+  * `--toggle`: The `on-click` action (in your `swaync` panel or on a keybind) that toggles all wireless (Wi-Fi & Bluetooth) on or off.
+* **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
+* **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
+
+# Installation Guide
+
 ## 1. Core Dependencies (pacman)
 
 This won't be a one-click install. You need to build the base.
@@ -33,7 +59,7 @@ Bash
 
 ### Core UI tools
 
-    sudo pacman -S waybar hyprlock swayidle wofi rofi wlogout hypridle
+    sudo pacman -S waybar hyprlock swayidle wofi rofi wlogout hypridle tlp
 
 ### Key system services & utilities
 
@@ -138,9 +164,12 @@ Fill in your secrets. This one file controls your weather API key, wallpaper dir
 ## 4. Building the Rust Apps
 
 This repo contains the source code for all my custom scripts in the ~/sysScripts directory. You need to install them.
-Bash
 
-### First, init rustup
+### First copy sysScripts into your home dir
+
+    cp -r sysScripts ~/sysScripts
+
+### init rustup
 
     rustup-init
 
@@ -170,13 +199,22 @@ I don't commit my API keys. You shouldn't either.
 Symlink the "safe" configs:
 Bash
 
+    ln -s ~/Arch-multi-session-dot-files/.tmux.conf ~/.tmux.conf
+    ln -s ~/Arch-multi-session-dot-files/.profile ~/.profile
+    ln -s ~/Arch-multi-session-dot-files/tlp.conf /etc/tlp.conf
+    sudo systemctl enable tlp.service
     ln -s ~/Arch-multi-session-dot-files/.config/hypr ~/.config/hypr
     ln -s ~/Arch-multi-session-dot-files/.config/sway ~/.config/sway
     ln -s ~/Arch-multi-session-dot-files/.config/niri ~/.config/niri
     ln -s ~/Arch-multi-session-dot-files/.config/rofi ~/.config/rofi
     ln -s ~/Arch-multi-session-dot-files/.config/swaync ~/.config/swaync
-    # ... etc for nvim, tmux, etc.
-    
+    ln -s ~/Arch-multi-session-dot-files/.config/environment.d ~/.config/environment.d
+    ln -s ~/Arch-multi-session-dot-files/.config/ghostty ~/.config/ghostty
+    ln -s ~/Arch-multi-session-dot-files/.config/gtk-3.0 ~/.config/gtk-3.0
+    ln -s ~/Arch-multi-session-dot-files/.config/gtk-4.0 ~/.config/gtk-4.0
+    ln -s ~/Arch-multi-session-dot-files/.config/fastfetch ~/.config/fastfetch
+    ln -s ~/Arch-multi-session-dot-files/.config/wlogout ~/.config/wlogout
+    ln -s ~/Arch-multi-session-dot-files/.config/waybar ~/.config/waybar
 
 Our Rust scripts handle all secrets. You just need to copy the Waybar config templates.
 
@@ -210,3 +248,67 @@ If `greetd-tuigreet` shows you a huge list of sessions you don't use (like "GNOM
     NoExtract = usr/share/wayland-sessions/gnome-classic.desktop usr/share/xsessions/gnome-classic.desktop    usr/share/xsessions/gnome-xorg.desktop
     ```
 3.  After saving, run a full system update. `pacman` will see these files are no longer "managed" and will ask you to remove them, cleaning up your login manager.
+
+# Power Management Issues on my Hardware
+
+## dGPU Power Management (NVIDIA Hybrid Laptops)
+
+This is the most critical fix for achieving low power (4-5W) idle on NVIDIA hybrid laptops (like the ThinkPad X1 Extreme).
+
+**The Problem:** Display managers like `gdm` or `sddm` probe the NVIDIA dGPU at boot, placing a VRAM lock. This "Video Memory: Active" state prevents the dGPU from entering its `D3cold` (RTD3) suspend state, wasting 3-5W of power at all times.
+
+**The Solution:** We must use a login manager that does *not* probe the dGPU at boot (`greetd`) and set the correct NVIDIA kernel module parameters.
+
+### 1. Switch to `greetd`
+
+This is the most important step. `greetd` will not wake the dGPU.
+
+  bash
+
+    sudo systemctl disable --now gdm # Or sddm
+    sudo systemctl enable --now greetd.service
+
+Then, edit /etc/greetd/config.toml to find your sessions (this is in the pacman dependencies):
+Ini, TOML
+
+    [default_session]
+    command = "tuigreet --time --remember --sessions /usr/share/wayland-sessions:/usr/share/xsessions"
+
+### 2. BIOS Setup
+
+    Set Config > Power > Sleep State to Windows (or S0ix).
+
+### 3. Set Kernel Module Parameters (The "Golden Config")
+
+Create /etc/modprobe.d/nvidia.conf:
+
+    # Disable GSP firmware (buggy on some Turing cards)
+    options nvidia NVreg_EnableGpuFirmware=0
+    # Enable "fine-grained" (0x02) runtime D3
+    options nvidia NVreg_DynamicPowerManagement=0x02
+    # Enable S0ix suspend support
+    options nvidia NVreg_EnableS0ixPowerManagement=1
+
+Create /etc/modprobe.d/99-nvidia-uvm-blacklist.conf to prevent the nvidia_uvm (CUDA) module from loading at boot and holding the VRAM lock:
+
+    blacklist nvidia_uvm
+
+**(The nvidia_uvm module will still load on-demand when you launch a CUDA app).**
+
+### 4. Set udev Rule
+
+Create /etc/udev/rules.d/90-nvidia-pm.rules to enable runtime power management:
+
+    SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{power/control}="auto"
+
+### 5. Rebuild Everything
+
+Ensure nvidia_drm.modeset=1 is in your /etc/default/grub GRUB_CMDLINE_LINUX_DEFAULT.
+
+    Run:
+    Bash
+
+    sudo mkinitcpio -P
+    sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+After a reboot, your dGPU will now correctly power off (Video Memory: Off) after 10-15 seconds of idle.
