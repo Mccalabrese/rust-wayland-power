@@ -79,8 +79,8 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 - **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
 - **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
 - **`cloudflare-toggle`**:
-  - **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare HTTPS over DNS.
-  - **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare HTTPS over DNS on or off using `pkexec`.
+  - **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare DNS over HTTPS.
+  - **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare DNS over HTTPS on or off using `pkexec`.
 - **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
   - **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
   - **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
