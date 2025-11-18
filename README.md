@@ -16,7 +16,7 @@ This is my obsessive setup for a minimal, multi-compositor Arch Linux environmen
 
 **Credit to JaKooLit for the original inspiration. I have since heavily modified and optimized it for my needs. Many theme options and examples are available on <https://github.com/JaKooLit/Hyprland-Dots>**
 
-The whole point is efficiency and performance. This setup idles at 4.8W on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti).
+The whole point is efficiency and performance. This setup idles at 4.8W on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti, 4k display).
 
 This is a personal repo, not a beginner's guide. It assumes you know what you're doing.
 
@@ -395,7 +395,7 @@ SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{power/control}="auto"
 
 Ensure nvidia_drm.modeset=1 is in your /etc/default/grub GRUB_CMDLINE_LINUX_DEFAULT.
 
-    Run:
+Run:
 
 ```bash
 sudo mkinitcpio -P
