@@ -25,9 +25,10 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
 <p align="center">
   <img src="screenshots/niri.png" width="32%" alt="Niri Overview"/>
   <img src="screenshots/sway.png" width="32%" alt="Sway iGPU-only Idle"/>
+  <img src="screenshots/gnome.png" width="32%" alt="Gnome Desktop"/>
   </p>
 <p align="center">
-  <img src="screenshots/hyprland.png" width="32%" alt="Sway iGPU-only Idle"/>
+  <img src="screenshots/hyprland.png" width="32%" alt="Hyprland Desktop"/>
 </p>
 
 ## Table of Contents
