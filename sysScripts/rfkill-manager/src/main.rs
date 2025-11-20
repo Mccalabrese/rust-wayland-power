@@ -1,15 +1,21 @@
 use anyhow::{anyhow, Context, Result};
-use libc;
 use notify_rust::Notification;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use std::ffi::OsStr;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
-use sysinfo::System;
-use shellexpand;
 use toml;
+
+fn expand_path(path: &str) -> PathBuf {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(&path[2..]);
+        }
+    }
+    PathBuf::from(path)
+}
 
 // --- Config Structs ---
 #[derive(Deserialize, Debug)]
@@ -32,15 +38,20 @@ struct GlobalConfig {
 
 // --- Config Loader (Copied from our other projects) ---
 fn load_config() -> Result<GlobalConfig> {
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
+
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path {}", config_path))?;
+        .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+
     let config: GlobalConfig = toml::from_str(&config_str)
-        .context("Failed to parse config.toml. Check for syntax errors.")?;
+        .context("Failed to parse config.toml")?;
+
     Ok(config)
 }
 fn is_blocked() -> Result<bool> {
-    let output = Command::new("/usr/bin/rfkill")
+    let output = Command::new("rfkill")
         .arg("list")
         .arg("all")
         .output()
@@ -82,7 +93,7 @@ fn run_toggle(config: &RfkillConfig) -> Result<()> {
         ("block", "Airplane Mode: ON")
     };
     //Run toggle command
-    let status = Command::new("/usr/bin/rfkill")
+    let status = Command::new("rfkill")
         .arg(action)
         .arg("all")
         .status()?;
@@ -90,19 +101,20 @@ fn run_toggle(config: &RfkillConfig) -> Result<()> {
         return Err(anyhow!("rfkill {} command failed", action));
     }
     //send notification
-    let icon_path = shellexpand::tilde(&config.icon).to_string();
-    Notification::new()
+    let icon_path = expand_path(&config.icon);
+    let _ = Notification::new()
         .summary("Airplane Mode")
         .body(message)
-        .icon(&icon_path)
-        .show()?;
+        .icon(icon_path.to_str().unwrap_or(""))
+        .show();
     //send signal to Waybar
-    let sys = System::new_all();
-    if let Some(waybar_pid) = sys.processes_by_name(OsStr::new(&config.bar_process_name)).next() {
-        let pid = waybar_pid.pid().as_u32() as i32;
-        let signal_num = libc::SIGRTMIN() + config.bar_signal_num;
-        unsafe { libc::kill(pid, signal_num) };
-    }
+    let sig_rtmin = 34;
+    let signal = sig_rtmin + config.bar_signal_num;
+    let _ = Command::new("pkill")
+        .arg(format!("-{}", signal))
+        .arg("-x")
+        .arg(&config.bar_process_name)
+        .status();
     Ok(())
 }
 // --- Main Logic ---
@@ -111,21 +123,19 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let mode = args.get(1).map(|s| s.as_str());
     //load config
-    let config =load_config()?.rfkill_toggle;
+    let config = load_config()?.rfkill_toggle;
     //match on mode
     match mode {
         Some("--status") => {
-            if let Err(e) = run_status(&config) {
-                eprintln!("{}", e);
-            }
+            run_status(&config)?;
         }
         Some("--toggle") | None => {
             if let Err(e) = run_toggle(&config) {
-                Notification::new()
+                let _ = Notification::new()
                     .summary("Airplane Mode Error")
                     .body(&e.to_string())
                     .icon("dialog-error")
-                    .show()?;
+                    .show();
             }
         }
         _ => {
