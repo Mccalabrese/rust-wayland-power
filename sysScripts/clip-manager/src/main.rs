@@ -1,10 +1,18 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
+use std::path::PathBuf;
 use std::fs;
 use std::io::Write; 
 use std::process::{Command, Stdio};
-use shellexpand;
-use toml;
+
+fn expand_path(path: &str) -> PathBuf {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(&path[2..]);
+        }
+    }
+    PathBuf::from(path)
+}
 
 // --- Config Structs ---
 #[derive(Deserialize, Debug)]
@@ -20,9 +28,11 @@ struct GlobalConfig {
 
 // --- Config Loader ---
 fn load_config() -> Result<GlobalConfig> {
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path {}", config_path))?;
+        .with_context(|| format!("Failed to read config file from path {}", config_path.display()))?;
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
     Ok(config)
@@ -117,15 +127,15 @@ fn wipe_history() -> Result<()> {
 
 // Shows the Rofi menu and returns the selected item AND the exit code
 fn show_rofi(list: &str, config: &ClipConfig) -> Result<(i32, String)> {
-    let rofi_config_path = shellexpand::tilde(&config.rofi_config).to_string();
+    let rofi_config_path = expand_path(&config.rofi_config);
 
     let mut child = Command::new("rofi")
         .arg("-i") 
         .arg("-dmenu")
         .arg("-kb-custom-1")
-        .arg("Control-Delete")
+        .arg("Control+Delete")
         .arg("-kb-custom-2")
-        .arg("Alt-Delete")
+        .arg("Alt+Delete")
         .arg("-config")
         .arg(rofi_config_path)
         .arg("-mesg")

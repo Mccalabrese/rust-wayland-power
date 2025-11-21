@@ -114,7 +114,35 @@ fn main() -> Result<()> {
     // Safely join the command parts (e.g., ["yay", "-Syu"] -> "yay -Syu")
     let update_cmd_str = updater_conf.update_command.join(" ");
     
-    let bash_script = format!("{} \n exit_code=$? \n echo -e '\\n\\n🏁 Update process finished. This window will close in 5 seconds.' \n sleep 5 \n exit $exit_code",
+    let bash_script = format!(r#"
+        {}
+        sys_exit=$?
+
+        fw_exit=0
+
+        if [ $sys_exit -eq 0 ]; then
+            echo -e "\n\n🔌 Checking for Firmware Updates..."
+
+            if command -v fwupdmgr &> /dev/null; then
+                sudo fwupdmgr refresh
+                sudo fwupdmgr update -y
+                fw_exit=$?
+            else
+                echo "fwupdmgr not found, skipping."
+            fi
+        else
+            echo -e "\n⚠ System update failed, skipping firmware."
+        fi
+
+        echo -e "\n\n🏁 Update process finished. CLosing in 5s..."
+        sleep 5
+
+        if [ $sys_exit -ne 0 ] || [ $fw_exit -ne 0 ]; then
+            exit 1
+        else
+            exit 0
+        fi
+        "#,
         update_cmd_str
     );
 

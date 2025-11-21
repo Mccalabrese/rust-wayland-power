@@ -2,20 +2,18 @@ use std::env;
 use std::fs;
 use std::process::Command;
 use anyhow::{Context, Result};
-use sysinfo::System; 
-use libc;
 use serde::Deserialize; 
 use toml; 
-use shellexpand; 
-use std::ffi::OsStr; 
 
 // --- 1. Config Structs (Same as status.rs) ---
 #[derive(Deserialize, Debug)]
 struct Config {
+    //Ignored fields but serde is making me take them
     text_on: String,
     class_on: String,
     text_off: String,
     class_off: String,
+    //the actual ones I need
     resolv_content_on: String,
     resolv_content_off: String,
     bar_process_name: String,
@@ -29,9 +27,11 @@ struct GlobalConfig {
 
 // --- 2. Config Loader (Same as status.rs) ---
 fn load_config() -> Result<GlobalConfig> {
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path: {}", config_path))?;
+        .with_context(|| format!("Failed to read config file from path: {}", config_path.display()))?;
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
     Ok(config)
@@ -48,9 +48,9 @@ fn run_as_user() -> Result<()> {
     let is_running = Command::new("systemctl")
         .arg("is-active")
         .arg("cloudflared-dns")
-        .output()?
-        .status
-        .success();
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
     
     let mode = if is_running { "--stop" } else { "--start" };
     let content_on = &config.resolv_content_on;
@@ -66,19 +66,15 @@ fn run_as_user() -> Result<()> {
         .status()
         .context("Failed to run pkexec")?;
 
-    // Send signal using config values
+    // Send signal HARDCODING SIGRTMIN to 34!!!!
     if status.success() {
-        let mut sys = System::new_all();
-        // Use OsStr::new() for modern sysinfo
-        if let Some(waybar_pid) = sys.processes_by_name(OsStr::new(&config.bar_process_name)).next() {
-            let pid = waybar_pid.pid().as_u32() as i32;
-            // Use signal num from config
-            let signal_num = libc::SIGRTMIN() + config.bar_signal_num; 
-            let result = unsafe { libc::kill(pid, signal_num) };
-            if result == -1 {
-                return Err(anyhow::anyhow!("Failed to send signal to {}", config.bar_process_name));
-            }
-        }
+        let sig_base = 34;
+        let signal = sig_base + config.bar_signal_num;
+        let _ = Command::new("pkill")
+            .arg(format!("-{}", signal))
+            .arg("-x")
+            .arg(&config.bar_process_name)
+            .status();
     }
     Ok(())
 }
@@ -99,7 +95,6 @@ fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
         // Write resolv.conf from config
         fs::write("/etc/resolv.conf", content_on)
             .context("Failed to write /etc/resolv.conf")?;
-        Ok(())
 
     } else if mode == "--stop" {
         // Stop service 
@@ -115,10 +110,8 @@ fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
         // Write resolv.conf from config
         fs::write("/etc/resolv.conf", content_off)
             .context("Failed to write /etc/resolv.conf")?;
-        Ok(())
-    } else {
-        Ok(())
     }
+    Ok(())
 }
 
 // --- 5. Main ---
@@ -126,9 +119,19 @@ fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         let mode = &args[1];
-        let content_on = args.get(2).context("Missing content_on argument")?;
-        let content_off = args.get(3).context("Missing content_off argument")?;
-        run_as_root(mode, content_on, content_off)
+        if mode != "--start" && mode != "--stop" {
+            if args.len() < 4 {
+                eprintln!("Internal Error: Missing arguments for root mode.");
+                return Ok(());
+            }
+            let content_on = &args[2];
+            let content_off = &args[3];
+            run_as_root(mode, content_on, content_off)
+        } else {
+            let content_on = args.get(2).context("Missing content_on")?;
+            let content_off = args.get(3).context("Missing content_off")?;
+            run_as_root(mode, content_on, content_off)
+        }
     } else {
         run_as_user()
     }
