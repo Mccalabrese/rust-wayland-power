@@ -1,12 +1,20 @@
 use serde::Deserialize;
+use std::env;
 use std::fs;
+use std::path::PathBuf;
 use anyhow::{Context, Result};
-use shellexpand;
-use toml;
 use std::io::Write;
 use std::process::{Command, Stdio};
-use sysinfo::System;
-use std::ffi::OsStr;
+
+
+fn expand_path(path: &str) -> PathBuf {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(&path[2..]);
+        }
+    }
+    PathBuf::from(path)
+}
 
 #[derive(Deserialize, Debug)]
 struct Sheet {
@@ -41,30 +49,26 @@ struct GlobalConfig {
 }
 //Finds and parses the gloable config file
 fn load_config() -> Result<GlobalConfig> {
-    //Get the path to the config file (shellexpand::tilde())
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
-    //Read the files contents into a string(read_to_string())
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path {}", config_path))?;
-        
-    //Parse the String into our GlobalConfig struct(from_str())
+        .with_context(|| format!("Failed to read config file from path {}", config_path.display()))?;
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config file")?;
-    //return the config (or an error)
-    return Ok(config)
+    Ok(config)
 }
 fn get_compositor() -> String {
-    let sys = System::new_all();
-
-    if sys.processes_by_name(OsStr::new("niri")).next().is_some() {
-        "niri".to_string()
-    } else if sys.processes_by_name(OsStr::new("Hyprland")).next().is_some() {
-        "hyprland".to_string()
-    } else if sys.processes_by_name(OsStr::new("sway")).next().is_some() {
-        "sway".to_string()
-    } else {
-        "default".to_string() // Use "default" as a fallback
+    if env::var("NIRI_SOCKET").is_ok() { return "niri".to_string(); }
+    if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() { return "hyprland".to_string(); }
+    if env::var("SWAYSOCK").is_ok() { return "sway".to_string(); }
+    if let Ok(d) = env::var("XDG_CURRENT_DESKTOP") {
+        let d = d.to_lowercase();
+        if d.contains("niri") { return "niri".to_string(); }
+        if d.contains("hypr") { return "hyprland".to_string(); }
+        if d.contains("sway") { return "sway".to_string(); }
     }
+    "unknown".to_string()
 }
 fn show_rofi_menu(sheets: &[Sheet]) -> Result<String> {
     let menu_string = sheets
@@ -112,7 +116,7 @@ fn main() -> Result<()> {
         .find(|s| s.name == chosen_sheet_name)
         .context("Failed to find chosen sheet")?;
     //expand the ~ in the file path
-    let sheet_path = shellexpand::tilde(&chosen_sheet.file).to_string();
+    let sheet_path = expand_path(&chosen_sheet.file);
     let compositor = get_compositor();
     //terminal arguments for specific compositor
     let compositor_args = match compositor.as_str() {
@@ -122,7 +126,7 @@ fn main() -> Result<()> {
         _ => &kb_config.compositor_args.default,
     };
     //construct the inner shell command
-    let inner_cmd = format!("{} '{}'; printf %s 'Press any key to close...' read -n 1 -s -r", global_conf.pager, sheet_path);
+    let inner_cmd = format!("{} '{}'; printf %s 'Press any key to close...'; read -n 1 -s -r", global_conf.pager, sheet_path.display());
     //spawn the terminal comand
     Command::new(&global_conf.terminal)
         .args(compositor_args)

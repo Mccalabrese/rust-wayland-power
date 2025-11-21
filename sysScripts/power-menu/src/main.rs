@@ -2,11 +2,9 @@ use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json;
-use std::ffi::OsStr;
+use std::env;
 use std::process::Command;
-use sysinfo::{Signal, System};
 use toml;
-use shellexpand;
 use std::fs;
 
 // --- Config Structs (from config.toml) ---
@@ -52,23 +50,26 @@ struct SwayMode {
 
 // --- Helper: Get Compositor ---
 fn get_compositor() -> String {
-    let sys = System::new_all();
-    if sys.processes_by_name(OsStr::new("niri")).next().is_some() {
-        "niri".to_string()
-    } else if sys.processes_by_name(OsStr::new("Hyprland")).next().is_some() {
-        "hyprland".to_string()
-    } else if sys.processes_by_name(OsStr::new("sway")).next().is_some() {
-        "sway".to_string()
-    } else {
-        "unknown".to_string()
+    if env::var("NIRI_SOCKET").is_ok() { return "niri".to_string(); }
+    if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() { return "hyprland".to_string(); }
+    if env::var("SWAYSOCK").is_ok() { return "sway".to_string(); }
+    if let Ok(d) = env::var("XDG_CURRENT_DESKTOP") {
+        let d = d.to_lowercase();
+        if d.contains("niri") { return "niri".to_string(); }
+        if d.contains("hypr") { return "hyprland".to_string(); }
+        if d.contains("sway") { return "sway".to_string(); }
+
     }
+    "unknown".to_string()
 }
 
 // --- Helper: Load Config ---
 fn load_config() -> Result<GlobalConfig> {
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path {}", config_path))?;
+        .with_context(|| format!("Failed to read config file from path {}", config_path.display()))?;
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
     Ok(config)
@@ -76,14 +77,14 @@ fn load_config() -> Result<GlobalConfig> {
 
 // --- Kill Existing wlogout ---
 fn check_and_kill_wlogout() -> bool {
-    let sys = System::new_all();
-    let process_name = OsStr::new("wlogout");
-    if let Some(process) = sys.processes_by_name(process_name).next() {
-        println!("Found running wlogout (PID: {}), sending kill signal...", process.pid());
-        process.kill_with(Signal::Term);
-        return true; // We killed it
+    let status = Command::new("pkill")
+        .arg("-x")
+        .arg("wlogout")
+        .status();
+    match status {
+        Ok(s) => s.success(),
+        Err(_) => false,
     }
-    false // Nothing to kill
 }
 
 // --- Data Fetcher: Hyprland (JSON) ---
@@ -91,25 +92,17 @@ fn get_hyprland_data() -> Result<(f64, f64)> {
     let output = Command::new("hyprctl")
         .arg("-j")
         .arg("monitors")
-        .output()
-        .context("Failed to run hyprctl")?;
+        .output()?;
     
     if !output.status.success() {
-        return Err(anyhow!(
-            "hyprctl command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        anyhow::bail!("hyprctl failed");
     }
     
-    let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse hyprctl JSON output")?;
+    let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)?;
     
-    if let Some(focused_monitor) = monitors.iter().find(|m| m.focused) {
-        // Hyprland `height` is already logical
-        Ok((focused_monitor.height as f64, focused_monitor.scale))
-    } else {
-        Err(anyhow!("No focused monitor found in hyprctl output"))
-    }
+    monitors.iter().find(|m| m.focused)
+        .map(|m| (m.height as f64, m.scale))
+        .ok_or_else(|| anyhow!("No focused monitor"))
 }
 
 // --- Data Fetcher: Sway (JSON) ---
@@ -117,25 +110,17 @@ fn get_sway_data() -> Result<(f64, f64)> {
     let output = Command::new("swaymsg")
         .arg("-t")
         .arg("get_outputs")
-        .output()
-        .context("Failed to run swaymsg -t get_outputs")?;
+        .output()?;
     
     if !output.status.success() {
-        return Err(anyhow!(
-            "swaymsg command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        anyhow::bail!("swamsg failed");
     }
 
-    let monitors: Vec<SwayOutput> = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse swaymsg JSON output")?;
+    let monitors: Vec<SwayOutput> = serde_json::from_slice(&output.stdout)?;
 
-    if let Some(focused_monitor) = monitors.iter().find(|m| m.focused) {
-        // Sway gives physical height, so we must calculate logical height
-        let physical_height = focused_monitor.current_mode.height as f64;
-        let scale = focused_monitor.scale;
-        let logical_height = physical_height / scale; // <-- The normalization
-        Ok((logical_height, scale))
+    if let Some(m) = monitors.iter().find(|m| m.focused) {
+        let logical = (m.current_mode.height as f64) / m.scale;
+        Ok((logical, m.scale))
     } else {
         Err(anyhow!("No focused monitor found in swaymsg output"))
     }
@@ -146,18 +131,9 @@ fn get_niri_data() -> Result<(f64, f64)> {
     let output = Command::new("niri")
         .arg("msg")
         .arg("outputs")
-        .output()
-        .context("Failed to run niri msg outputs")?;
+        .output()?;
     
-    if !output.status.success() {
-        return Err(anyhow!(
-            "niri msg command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    
-    let output_str = String::from_utf8(output.stdout)
-        .context("niri msg output was not valid UTF-8")?;
+    let output_str = String::from_utf8_lossy(&output.stdout);
 
     // Niri doesn't specify focused, so we parse the first monitor
     let mode_re = Regex::new(r"Current mode: (\d+)x(\d+) @")?;
@@ -168,15 +144,10 @@ fn get_niri_data() -> Result<(f64, f64)> {
     let scale_caps = scale_re.captures(&output_str)
         .context("Could not find 'Scale:' in niri output")?;
 
-    let height_str = mode_caps.get(2).unwrap().as_str();
-    let scale_str = scale_caps.get(1).unwrap().as_str();
+    let height: f64 = mode_caps[2].parse()?;
+    let scale: f64 = scale_caps[1].parse()?;
 
-    // Niri gives physical height, so we must calculate logical height
-    let physical_height = height_str.parse::<f64>()?;
-    let scale = scale_str.parse::<f64>()?;
-    let logical_height = physical_height / scale; // <-- The normalization
-
-    Ok((logical_height, scale))
+    Ok((height / scale, scale))
 }
 
 // --- The Math ---
