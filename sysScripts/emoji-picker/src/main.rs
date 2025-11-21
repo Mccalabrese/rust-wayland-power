@@ -1,11 +1,20 @@
 use anyhow::{anyhow, Context, Result};
-use toml;
-use shellexpand;
 use emojis;
 use serde::Deserialize;
+use std::fmt::Write;
 use std::fs;
-use std::io::Write;
+use std::io::Write as IoWrite;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+fn expand_path(path: &str) -> PathBuf {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(&path[2..]);
+        }
+    }
+    PathBuf::from(path)
+}
 
 #[derive(Debug, Deserialize)]
 struct EmojiConfig {
@@ -18,31 +27,26 @@ struct GlobalConfig {
 }
 //--- Config Loader ---
 fn load_config() -> Result<GlobalConfig> {
-    let config_path = shellexpand::tilde("~/.config/rust-dotfiles/config.toml").to_string();
+    let config_path = dirs::home_dir()
+        .context("Cannot find home dir")?
+        .join(".config/rust-dotfiles/config.toml");
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path {}", config_path))?;
+        .with_context(|| format!("Failed to read config file from path {}", config_path.display()))?;
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
     Ok(config)
 }
 
 fn build_emoji_list() -> String {
-    let mut lines = Vec::new();
-    // 1. Loop through the *entire* emojis database
+    let mut buffer = String::with_capacity(60 * 1024);
     for emoji in emojis::iter() {
-        // 2. Create a searchable line
-        let line = format!(
-            "{} {}",
-            emoji.as_str(),
-            emoji.name()
-        );
-        lines.push(line);
+        let shortcode = emoji.shortcode().unwrap_or("");
+        let _ = writeln!(buffer, "{} {} ({})", emoji.as_str(), emoji.name(), shortcode);
     }
-    // 3. Join the Vec<String> into one big string
-    lines.join("\n")
+    buffer
 }
 fn show_rofi(list: &str, config: &EmojiConfig) -> Result<String> {
-    let rofi_config_path = shellexpand::tilde(&config.rofi_config).to_string();
+    let rofi_config_path = expand_path(&config.rofi_config);
     let mut child = Command::new("rofi")
         .arg("-i")
         .arg("-dmenu")
@@ -69,22 +73,24 @@ fn show_rofi(list: &str, config: &EmojiConfig) -> Result<String> {
 }
 fn parse_and_copy(selection: &str) -> Result<()> {
     // 1. Parse the line (replaces awk/head/tr)
-    let emoji = match selection.split(' ').next() {
+    let emoji = match selection.split_whitespace().next() {
         Some(emoji_char) => emoji_char,
         None => return Ok(()), // Empty selection
     };
 
     // 2. Pipe to wl-copy
-    let mut wl_copy_child = Command::new("wl-copy")
+    let mut child = Command::new("wl-copy")
+        .arg("--type")
+        .arg("text/plain;charset=utf-8")
         .stdin(Stdio::piped())
         .spawn()
         .context("Failed to spawn 'wl-copy'")?;
 
-    if let Some(mut stdin) = wl_copy_child.stdin.take() {
+    if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(emoji.as_bytes())?;
     }
 
-    if !wl_copy_child.wait()?.success() {
+    if !child.wait()?.success() {
         return Err(anyhow!("wl-copy failed"));
     }
     
@@ -99,3 +105,4 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
+
