@@ -57,7 +57,7 @@ rofi_theme_override = "element-icon { size: 20%; }"
 
 [update_check]
 # The command to run. We use a list for command and args.
-command_string = "/usr/bin/nm-online -q -t 5 && /usr/bin/yay -Qqu"
+command_string = "nm-online -q -t 5 && (checkupdates; yay -Qua) || true"
 # The file to cache the last known count
 cache_file = "~/.cache/update-check.json"
 # Icon to show if check fails but cache is available
