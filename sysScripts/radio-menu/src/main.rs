@@ -6,6 +6,24 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+// --- Constants (Single Source of Truth) ---
+const ICON_STOP: &str = "⏹ Stop Radio";
+const ICON_SEARCH: &str = "🔍 Search Online...";
+const PREFIX_FAV: &str = "⭐ ";
+const ICON_REDO: &str = "🔄 Try Again";
+
+const RESULT_LIMIT: usize = 15;
+
+const SEARCH_PROMPT: &str = "Type to search station name...";
+const HOME_HINT: &str = "<b>Enter:</b> Play  |  <b>Ctrl+R:</b> Remove Favorite";
+const SEARCH_HINT: &str = "<b>Enter:</b> Play  |  <b>Ctrl+S:</b> Save to Favorites  |  <b>Esc:</b> Back to Search";
+
+enum Action {
+    Exit,
+    Refresh,
+    Continue,
+}
+
 // --- Helper: Expand Path ---
 fn expand_path(path: &str) -> PathBuf {
     if path.starts_with("~/") {
@@ -60,7 +78,7 @@ fn load_config() -> Result<GlobalConfig> {
 fn search_stations(query: &str) -> Result<Vec<Station>> {
     let url = format!("https://de1.api.radio-browser.info/json/stations/byname/{}", query);
     let response = reqwest::blocking::get(&url)?.json::<Vec<Station>>()?;
-    Ok(response.into_iter().take(15).collect())
+    Ok(response.into_iter().take(RESULT_LIMIT).collect())
 }
 
 // --- Logic: Favorites ---
@@ -160,114 +178,127 @@ fn show_rofi(options: &[String], prompt: &str, config: &RadioConfig, custom_mess
 
     Ok((code, selection))
 }
+fn search(initial_query: Option<String>, config: &RadioConfig) -> Result<bool> {
+    let mut current_query = initial_query;
+    loop {
+        let query = match current_query.take() {
+            Some(q) => q,
+            None => {
+                let (code, q) = show_rofi(&[], "Search Query", config, Some(SEARCH_PROMPT))?;
+                if code == 1 || q.is_empty() { return Ok(false); }
+                q
+            }
+        };
+        // 2. Perform Search
+        let results = search_stations(&query)?;
 
+        // 3. Handle No Results
+        if results.is_empty() {
+            // Show error dialog
+            let (retry_code, _) = show_rofi(
+                &[ICON_REDO.to_string()],
+                "No Results", 
+                config, 
+                Some(&format!("No stations found for '<b>{}</b>'", query))
+            )?;
+                    
+            // If they hit Esc on the error dialog, go back to Main Menu
+            if retry_code == 1 { return Ok(false); }
+                    
+            // Otherwise (Enter on "Try Again"), 'continue' loops back to search bar
+            continue;
+        }
+
+        // 4. Show Results
+        let result_names: Vec<String> = results.iter().map(|s| s.name.clone()).collect();
+        let (r_code, picked_name) = show_rofi(
+            &result_names, 
+            "Results", 
+            config, 
+            Some(SEARCH_HINT)
+        )?;
+                
+        // If Esc on results list, go back to search bar
+        if r_code == 1 { continue; }
+
+        // Handle Selection
+        if let Some(station) = results.into_iter().find(|s| s.name == picked_name) {
+            if r_code == 10 {
+                // Ctrl+S -> Save
+                save_favorite(station.clone())?;
+                play_station(&station.name, &station.url_resolved)?;
+                let _ = Notification::new().summary("Radio").body("Station Saved").show();
+                return Ok(true);
+            } else if r_code == 0 {
+                // Enter -> Play
+                play_station(&station.name, &station.url_resolved)?;
+                return Ok(true);
+            }
+        }
+    }
+}
+fn handle_favorite_actions(clean_name: &str, code: i32, favorites: &[Station]) -> Result<Action> {
+    if code == 11 {
+        // Ctrl+R: Remove Favorite
+        remove_favorite(clean_name)?;
+        let _ = Notification::new().summary("Radio").body("Favorite Removed").show();
+        Ok(Action::Refresh)
+    } else if code == 0 {
+        // Enter: Play Favorite
+        if let Some(station) = favorites.iter().find(|s| s.name == clean_name) {
+            play_station(&station.name, &station.url_resolved)?;
+            Ok(Action::Exit)
+        } else {
+            Ok(Action::Continue)
+        }
+    } else {
+        Ok(Action::Continue)
+    }
+}
 // --- Main Flow ---
 fn main() -> Result<()> {
     let global_config = load_config()?;
     let config = global_config.radio_menu;
-    
-    loop {
+    let mut menu_options = Vec::with_capacity(20);
+
+    'main_menu: loop {
         let favorites = load_favorites()?;
-        
-        let mut menu_options = Vec::new();
-        menu_options.push("⏹ Stop Radio".to_string());
-        menu_options.push("🔍 Search Online...".to_string());
-        
+        menu_options.clear();
+        menu_options.push(ICON_STOP.to_string());
+        menu_options.push(ICON_SEARCH.to_string());
+
         for station in &favorites {
-            menu_options.push(format!("⭐ {}", station.name));
+            menu_options.push([PREFIX_FAV, &station.name].concat());
         }
 
         let (code, selection) = show_rofi(
             &menu_options, 
             "Radio", 
             &config, 
-            Some("<b>Enter:</b> Play  |  <b>Ctrl+R:</b> Remove Favorite")
+            Some(HOME_HINT)
         )?;
 
-        if code == 1 { break; } // Esc from Main Menu
+        if code == 1 { break 'main_menu; } 
 
-        if selection == "⏹ Stop Radio" {
+        if selection == ICON_STOP {
             stop_radio();
             let _ = Notification::new().summary("Radio").body("Stopped").show();
-            break; 
-        } else if selection == "🔍 Search Online..." {
-            // --- SEARCH LOOP (NEW LOGIC) ---
-            loop {
-                // 1. Get Query
-                let (s_code, query) = show_rofi(&[], "Search Query", &config, Some("Type to search station name..."))?;
-                
-                // If Esc (1) or empty query, break back to Main Menu
-                if s_code == 1 || query.is_empty() { break; }
-
-                // 2. Perform Search
-                let results = search_stations(&query)?;
-
-                // 3. Handle No Results
-                if results.is_empty() {
-                    // Show error dialog
-                    let (retry_code, _) = show_rofi(
-                        &["🔄 Try Again".to_string()], 
-                        "No Results", 
-                        &config, 
-                        Some(&format!("No stations found for '<b>{}</b>'", query))
-                    )?;
-                    
-                    // If they hit Esc on the error dialog, go back to Main Menu
-                    if retry_code == 1 { break; }
-                    
-                    // Otherwise (Enter on "Try Again"), 'continue' loops back to search bar
-                    continue;
-                }
-
-                // 4. Show Results
-                let result_names: Vec<String> = results.iter().map(|s| s.name.clone()).collect();
-                let (r_code, picked_name) = show_rofi(
-                    &result_names, 
-                    "Results", 
-                    &config, 
-                    Some("<b>Enter:</b> Play  |  <b>Ctrl+S:</b> Save to Favorites  |  <b>Esc:</b> Back to Search")
-                )?;
-                
-                // If Esc on results list, go back to search bar
-                if r_code == 1 { continue; }
-
-                // Handle Selection
-                if let Some(station) = results.into_iter().find(|s| s.name == picked_name) {
-                    if r_code == 10 { 
-                        // Ctrl+S -> Save
-                        save_favorite(station.clone())?;
-                        play_station(&station.name, &station.url_resolved)?;
-                        let _ = Notification::new().summary("Radio").body("Station Saved").show();
-                        // Exit completely after playing
-                        return Ok(()); 
-                    } else if r_code == 0 {
-                        // Enter -> Play
-                        play_station(&station.name, &station.url_resolved)?;
-                        // Exit completely after playing
-                        return Ok(());
-                    }
-                }
+            break 'main_menu; 
+        } else if selection == ICON_SEARCH {
+            if search(None, &config)? {
+                break 'main_menu;
             }
-            // If we break out of search loop, we break out of main loop too (close app)
-            break;
-
-        } else if selection.starts_with("⭐ ") { 
-            let clean_name = selection.strip_prefix("⭐ ").unwrap_or(&selection);
-            
-            if code == 11 {
-                // Ctrl+R: Remove Favorite
-                remove_favorite(clean_name)?;
-                let _ = Notification::new().summary("Radio").body("Favorite Removed").show();
-                continue; // Loop main menu to refresh list
-            } else {
-                // Enter: Play Favorite
-                if let Some(station) = favorites.iter().find(|s| s.name == clean_name) {
-                    play_station(&station.name, &station.url_resolved)?;
-                }
-                break;
+        } else if let Some(clean_name) = selection.strip_prefix(PREFIX_FAV) { 
+            let action = handle_favorite_actions(clean_name, code, &favorites)?;
+            match action {
+                Action::Exit => break 'main_menu,
+                Action::Refresh => continue 'main_menu,
+                Action::Continue => continue 'main_menu,
             }
         } else {
-            break;
+            if search(Some(selection), &config)? {
+                break 'main_menu;
+            }
         }
     }
 
