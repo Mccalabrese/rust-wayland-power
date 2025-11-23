@@ -41,7 +41,13 @@ fn build_emoji_list() -> String {
     let mut buffer = String::with_capacity(60 * 1024);
     for emoji in emojis::iter() {
         let shortcode = emoji.shortcode().unwrap_or("");
-        let _ = writeln!(buffer, "{} {} ({})", emoji.as_str(), emoji.name(), shortcode);
+        let _ = writeln!(
+            buffer, 
+            "{} <span size='1' foreground='#00000000'>{} {}</span>", 
+            emoji.as_str(), 
+            emoji.name(), 
+            shortcode
+            );
     }
     buffer
 }
@@ -50,6 +56,7 @@ fn show_rofi(list: &str, config: &EmojiConfig) -> Result<String> {
     let mut child = Command::new("rofi")
         .arg("-i")
         .arg("-dmenu")
+        .arg("-markup-rows")
         .arg("-config")
         .arg(rofi_config_path)
         .arg("-mesg")

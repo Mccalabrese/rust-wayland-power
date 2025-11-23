@@ -1,48 +1,60 @@
 /* Main Config - emoji */
-
-@import "~/.config/rofi/config.rasi" 
+@import "~/.config/rofi/config.rasi"
 
 /* ---- Mainbox ---- */
 mainbox {
-  children:
-    [ "inputbar", "message", "listview"];
+  children: [ "inputbar", "listview" ];
 }
 
 /* ---- Window ---- */
 window {
-  width: inherit;
-  height: inherit;
+  width: 45%; 
+  height: 60%; /* Taller to show more rows */
 }
 
 /* ---- Entry ---- */
 entry {
-  width: 37%;
-  placeholder: " 💫 Search / Choose Emoji's";
-  horizontal-align: 0.0;
+  width: 100%;
+  placeholder: " 🔎 Search...";
+  horizontal-align: 0.5;
 }
 
 /* ---- Listview ---- */
 listview {
-  columns: 2;
-  lines: 7;
+  /* 7 columns makes the cells look more like squares than rectangles */
+  columns: 7;
+  lines: 8;
   fixed-height: false;
   scrollbar: true;
-  spacing: 6px;
+  spacing: 2px;
   cycle: true;
+  flow: horizontal;
 }
 
 /* ---- Elements ---- */
 element {
-  orientation: horizontal;
-}
-
-element-icon {
-  size: 0%;
+  orientation: vertical;
+  /* TOP/BOTTOM padding is critical here to stop the "cut off" effect.
+     LEFT/RIGHT padding adjusts the width. 
+     Format is: padding: top right bottom left; */
+  padding: 5px 1px 30px 1px; 
+  
+  border-radius: 1px;
+  children: [ element-text ];
 }
 
 element-text {
-  horizontal-align: 0.0;
+  horizontal-align: 0.5;
   vertical-align: 0.5;
-  padding: 0px;
-  margin: 0px;
+  /* Make sure the size matches your padding. 
+     If you go bigger than 28, increase the 15px padding above. */
+  font: "Noto Color Emoji, Monospace 28"; 
+}
+
+/* Selected element style */
+element selected {
+  background-color: @selected-active-background; /* Or your theme color */
+  text-color: @selected-active-foreground;
+  border: 1px;
+  border-color: @border-color; /* Optional, depends on your theme */
 }

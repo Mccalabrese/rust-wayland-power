@@ -1,0 +1,5 @@
+# Time in milliseconds. 5000 = 5 seconds
+default-timeout=5000
+
+# Optional: Add a visual indicator that it's going to expire
+ignore-timeout=0
