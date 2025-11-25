@@ -10,7 +10,7 @@ use crossterm::{
 };
 use ratatui::{
     prelude::{CrosstermBackend, Terminal},
-    widgets::{Block, Borders, ListState, ListItem, List},
+    widgets::{Block, Borders, ListState, Paragraph, ListItem, List},
     layout::*,
     prelude::*,
 };
@@ -57,6 +57,8 @@ struct App {
     stocks: Vec<String>,
     should_quit: bool,
     state: ListState,
+    api_key: Option<String>,
+    current_quote: Option<FinnhubQuote>,
 }
 impl App {
     fn new(config: Config) -> Self {
@@ -66,6 +68,8 @@ impl App {
             stocks: config.stocks,
             should_quit: false,
             state,
+            api_key: config.api_key,
+            current_quote: None,
         }
     }
     pub fn next(&mut self) {
@@ -182,13 +186,17 @@ fn ui(frame: &mut ratatui::Frame, app: &mut App) {
         .highlight_style(Style::default().bg(Color::Blue))
         .highlight_symbol(">> ");
     frame.render_stateful_widget(list, chunks[0], &mut app.state);
-    let right_block = Block::default()
-        .title("Chart")
-        .borders(Borders::ALL);
-    frame.render_widget(right_block, chunks[1]);
+    let right_content = if let Some(quote) = &app.current_quote {
+        format!("Price: ${:.2}\nChange: {:.2}%", quote.price, quote.percent)
+    } else {
+        String::from("Select a stock and press Enter to fetch quote.")
+    };
+    let right_paragraph = Paragraph::new(right_content)
+        .block(Block::default().title("Chart").borders(Borders::ALL));
+    frame.render_widget(right_paragraph, chunks[1]);
 
 }
-async fn run_tui(client: &reqwest::Client, mut app: &mut App) -> Result<()> {
+async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
     let mut stdout = stdout();
     stdout.execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -198,7 +206,7 @@ async fn run_tui(client: &reqwest::Client, mut app: &mut App) -> Result<()> {
 
     loop {
         terminal.draw(|frame| {
-            ui(frame, &mut app);
+            ui(frame, app);
         })?;
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key_event) = event::read()? {
@@ -213,6 +221,21 @@ async fn run_tui(client: &reqwest::Client, mut app: &mut App) -> Result<()> {
                         KeyCode::Up => {
                             app.previous();
                         },
+                        KeyCode::Enter => {
+                            if let Some(selected) = app.state.selected() {
+                                let symbol = app.stocks[selected].clone();
+                                if let Some(api_key) = &app.api_key {
+                                    match fetch_quote(client, &symbol, api_key).await {
+                                        Ok(quote) => {
+                                            app.current_quote = Some(quote);
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Error fetching quote for {}: {}", symbol, e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 } 
