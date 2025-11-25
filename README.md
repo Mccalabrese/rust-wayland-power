@@ -95,7 +95,7 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 let bash_script = format!("{} \n exit_code=$? \n echo -e '\\n\\n🏁 Update process finished. This window will close in 5 seconds.' \n sleep 5 \n exit $exit_code", update_cmd_str);
 ```
 >
-    > Then rebuild:
+- > Then rebuild:
 
 ```rust
 cargo install --path .
