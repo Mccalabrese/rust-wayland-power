@@ -62,7 +62,7 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
 
 *Why not Python? Because Python is the absolute worst. It's a slow, dependency-hell nightmare. I don't trust its supply chain, and honestly, I just don't vibe with it. I'll take C-style syntax any day.*
 
-*Why not shell scripts? My old scripts were a disaster zone of pgrep, jq, sed, awk, and cat all piped together. They were fragile, slow, and worked like crap.*
+*Why not shell scripts? My old scripts were a disaster zone of pgrep, jq, sed, awk, and cat all piped together. They were fragile, slow, and worked like crap. Check out the [`sysScripts/`](sysScripts/) directory to see the Rust scripts that replaced them*
 
 *But why not Zig? I love Zig. It's the future. But the sad reality is that its API changes so fast, I can't even learn the language before a pacman -Syu breaks everything I've written.*
 
@@ -95,7 +95,10 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
     > let bash_script = format!("{} \n exit_code=$? \n echo -e '\\n\\n🏁 Update process finished. This window will close in 5 seconds.' \n sleep 5 \n exit $exit_code", update_cmd_str);
     > ```
 >
-    > Then rebuild "cargo install --path ." **
+    > Then rebuild:
+    >```rust
+    >cargo install --path .
+    >```
 
 - **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
 - **`rfkill-manager`**:
@@ -104,9 +107,9 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 - **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
 - **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
 - **`radio-menu`**: A rofi based, extremely lightweight and low power consumption internet radio streaming tool that caches favorite stations for quick selection.
-!!!---------------------------------------!!!
--**`waybar-finance`** ⚠️**I am working on this, don't build it or touch it yet, it's far from complete, Im pushing it to keep personal backups of previous versions for my use**
-!!!---------------------------------------!!!
+- !!!---------------------------------------!!!
+- **`waybar-finance`** ⚠️**I am working on this, don't build it or touch it yet, it's far from complete, Im pushing it to keep personal backups of previous versions for my use**
+- !!!---------------------------------------!!!
 
 # Installation Guide
 
@@ -169,7 +172,7 @@ Ini, TOML:
 
 ```ini
 [wifi-scan]
-url=https://www.googleapis.com/geolocation/v1/geocluate?key=YOUR_GOOGLE_KEY_HERE
+url=https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_GOOGLE_KEY_HERE
 ```
 
 Restart the service: sudo systemctl restart geoclue.service.
