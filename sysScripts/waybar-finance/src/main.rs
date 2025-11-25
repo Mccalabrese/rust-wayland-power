@@ -98,6 +98,24 @@ impl App {
         };
         self.state.select(Some(i));
     }
+    pub fn delete(&mut self) {
+        if let Some(selected) = self.state.selected() {
+            if self.stocks.is_empty() {
+                return;
+            }
+            //Remove the item from the data
+            self.stocks.remove(selected);
+            //Dealing with the state
+            if self.stocks.is_empty() {
+                self.state.select(None);
+            } else if selected >= self.stocks.len() {
+                //delete the last item, move the cursor up one
+                self.state.select(Some(self.stocks.len() - 1));
+            }
+            //If we delete from the middle the cursor will land on next item 
+            //so I'm going to attempt adding nothing here
+        }
+    }
 }
 fn get_config_path() -> Result<std::path::PathBuf> {
     let config_dir = dirs::config_dir()
@@ -220,7 +238,7 @@ async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
                         }
                         KeyCode::Up => {
                             app.previous();
-                        },
+                        }
                         KeyCode::Enter => {
                             if let Some(selected) = app.state.selected() {
                                 let symbol = app.stocks[selected].clone();
@@ -236,6 +254,9 @@ async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
                                 }
                             }
                         }
+                        KeyCode::Char('d') | KeyCode::Delete => {
+                            app.delete();
+                        }
                         _ => {}
                     }
                 } 
@@ -247,6 +268,22 @@ async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
     }
     terminal.backend_mut().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
+    //save new config
+    save_config(app)?;
+    Ok(())
+}
+fn save_config(app: &App) -> Result<()> {
+    let config_path = get_config_path()?;
+    //make a new config from App state
+    let new_config = Config {
+        stocks: app.stocks.clone(),
+        api_key: app.api_key.clone(),
+    };
+    //Serialize to pretty JSON
+    let json = serde_json::to_string_pretty(&new_config)
+        .context("Failed to serialize config")?;
+    //Write to disk
+    fs::write(config_path, json).context("Failed to write config file")?;
     Ok(())
 }
 #[tokio::main]
