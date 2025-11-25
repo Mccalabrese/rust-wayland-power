@@ -10,7 +10,7 @@ use crossterm::{
 };
 use ratatui::{
     prelude::{CrosstermBackend, Terminal},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, ListState, ListItem, List},
     layout::*,
     prelude::*,
 };
@@ -56,13 +56,43 @@ struct WaybarOutput {
 struct App {
     stocks: Vec<String>,
     should_quit: bool,
+    state: ListState,
 }
 impl App {
     fn new(config: Config) -> Self {
+        let mut state = ListState::default();
+        state.select(Some(0));
         Self {
             stocks: config.stocks,
             should_quit: false,
+            state,
         }
+    }
+    pub fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.stocks.len() -1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+    pub fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.stocks.len() -1
+                } else {
+                    i-1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
     }
 }
 fn get_config_path() -> Result<std::path::PathBuf> {
@@ -132,7 +162,12 @@ async fn run_waybar_mode(client: &reqwest::Client) -> Result<()> {
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
 }
-fn ui(frame: &mut ratatui::Frame, app: &App) {
+fn ui(frame: &mut ratatui::Frame, app: &mut App) {
+    let watchlist: Vec<ListItem> = app
+        .stocks
+        .iter()
+        .map(|s| ListItem::new(s.as_str()))
+        .collect();
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -140,17 +175,20 @@ fn ui(frame: &mut ratatui::Frame, app: &App) {
             Constraint::Min(0),
         ])
         .split(frame.area());
-    let left_block = Block::default()
-        .title("Watchlist")
-        .borders(Borders::ALL);
-    frame.render_widget(left_block, chunks[0]);
+    let list = List::new(watchlist)
+        .block(Block::default()
+            .title("Watchlist")
+            .borders(Borders::ALL))
+        .highlight_style(Style::default().bg(Color::Blue))
+        .highlight_symbol(">> ");
+    frame.render_stateful_widget(list, chunks[0], &mut app.state);
     let right_block = Block::default()
         .title("Chart")
         .borders(Borders::ALL);
     frame.render_widget(right_block, chunks[1]);
 
 }
-async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
+async fn run_tui(client: &reqwest::Client, mut app: &mut App) -> Result<()> {
     let mut stdout = stdout();
     stdout.execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -160,13 +198,24 @@ async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
 
     loop {
         terminal.draw(|frame| {
-            ui(frame, &app);
+            ui(frame, &mut app);
         })?;
         if event::poll(std::time::Duration::from_millis(16))? {
-            if let event::Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    app.should_quit = true;
-                }
+            if let event::Event::Key(key_event) = event::read()? {
+                if key_event.kind == KeyEventKind::Press {
+                    match key_event.code {
+                        KeyCode::Char('q') => {
+                            app.should_quit = true;
+                        }
+                        KeyCode::Down => {
+                            app.next();
+                        }
+                        KeyCode::Up => {
+                            app.previous();
+                        },
+                        _ => {}
+                    }
+                } 
             }
         }
         if app.should_quit {
