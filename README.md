@@ -22,7 +22,7 @@ This is a personal repo, not a beginner's guide. It assumes you know what you're
 
 ## My Custom Rust Binaries
 
-All the helper scripts in this repo have been rewritten in Rust for maximum performance and stability. Here is what each one does:
+All the helper scripts in this repo have been rewritten in Rust for maximum performance and stability. **These tools can be used independently of the rest of my dotfiles.** Here is what each one does:
 
 - **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
 - **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
