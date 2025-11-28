@@ -1,3 +1,12 @@
+//! Rfkill Manager (rfkill-manager)
+//!
+//! A dual-mode utility to control and monitor "Airplane Mode" (rfkill) on Linux.
+//! Designed for Waybar integration.
+//!
+//! Usage:
+//!   rfkill-manager --status  => Prints JSON for Waybar (class "on" or "off").
+//!   rfkill-manager --toggle  => Switches state, notifies user, and signals Waybar to refresh.
+
 use anyhow::{anyhow, Context, Result};
 use notify_rust::Notification;
 use serde::Deserialize;
@@ -6,18 +15,17 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use toml;
 
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
 
-// --- Config Structs ---
+// --- Config Modes ---
 #[derive(Deserialize, Debug)]
 struct RfkillConfig {
     icon: String,
@@ -50,6 +58,11 @@ fn load_config() -> Result<GlobalConfig> {
 
     Ok(config)
 }
+
+// --- System Logic ---
+
+/// Queries the system `rfkill` status.
+/// Returns `true` if ANY device is soft-blocked (Airplane Mode is effectively ON).
 fn is_blocked() -> Result<bool> {
     let output = Command::new("rfkill")
         .arg("list")
@@ -65,9 +78,15 @@ fn is_blocked() -> Result<bool> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // Heuristic: If any device is "Soft blocked: yes", consider Airplane Mode active.
     Ok(stdout.contains("Soft blocked: yes"))
 }
+
+// --- Mode: Status (Read-Only) ---
+
+/// Prints the current state in JSON format for Waybar to consume.
 fn run_status(config: &RfkillConfig) -> Result<()> {
+    // Determine UI state based on system state
     let (text, class, tooltip) = match is_blocked() {
         Ok(true) => (config.text_on.as_str(), config.class_on.as_str(), config.tooltip_on.as_str(),),
         Ok(false) => (config.text_off.as_str(), config.class_off.as_str(), config.tooltip_off.as_str(),),
@@ -83,16 +102,19 @@ fn run_status(config: &RfkillConfig) -> Result<()> {
     }));
     Ok(())
 }
+
+// --- Mode: Toggle (Write) ---
+
+/// Toggles the system state, sends a notification, and refreshes the bar.
 fn run_toggle(config: &RfkillConfig) -> Result<()> {
-    //check current state
+    // Determine Action
     let blocked = is_blocked().context("Failed to check rfkill state before toggle")?;
-    //set action
     let (action, message) = if blocked {
         ("unblock", "Airplane Mode: OFF")
     } else {
         ("block", "Airplane Mode: ON")
     };
-    //Run toggle command
+    // Execute Change
     let status = Command::new("rfkill")
         .arg(action)
         .arg("all")
@@ -100,15 +122,18 @@ fn run_toggle(config: &RfkillConfig) -> Result<()> {
     if !status.success() {
         return Err(anyhow!("rfkill {} command failed", action));
     }
-    //send notification
+    // Notify User
     let icon_path = expand_path(&config.icon);
     let _ = Notification::new()
         .summary("Airplane Mode")
         .body(message)
         .icon(icon_path.to_str().unwrap_or(""))
         .show();
-    //send signal to Waybar
-    let sig_rtmin = 34;
+    
+    // 4. Signal Waybar
+    // Use a real-time signal (SIGRTMIN + offset) to force Waybar 
+    // to re-run the --status command immediately, updating the icon instantly.
+    let sig_rtmin = 34; // Standard Linux SIGRTMIN base
     let signal = sig_rtmin + config.bar_signal_num;
     let _ = Command::new("pkill")
         .arg(format!("-{}", signal))
@@ -117,14 +142,11 @@ fn run_toggle(config: &RfkillConfig) -> Result<()> {
         .status();
     Ok(())
 }
-// --- Main Logic ---
+// --- Main Dispatcher ---
 fn main() -> Result<()> {
-    //get args
     let args: Vec<String> = env::args().collect();
     let mode = args.get(1).map(|s| s.as_str());
-    //load config
     let config = load_config()?.rfkill_toggle;
-    //match on mode
     match mode {
         Some("--status") => {
             run_status(&config)?;

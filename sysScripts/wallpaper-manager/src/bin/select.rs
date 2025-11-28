@@ -1,23 +1,31 @@
+//! Wallpaper Selector (wp-select)
+//!
+//! The User Interface for the wallpaper system.
+//! 1. Detects the current compositor environment (IPC).
+//! 2. Queries active monitors dynamically.
+//! 3. Reads the pre-generated cache (from wp-daemon) for instant startup.
+//! 4. Uses `rofi` as a GUI frontend to display thumbnails and filter results.
+//! 5. Delegates the final action to `wp-apply`.
+
 use std::fs;
 use std::env;
 use std::io::Write;
 use std::path::{PathBuf, Path};
 use std::process::{Command, Stdio};
 use anyhow::{anyhow, Context, Result};
-use dirs;
 use serde::Deserialize;
-use toml;
 
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct WallpaperManagerConfig {
     wallpaper_dir: String,
     swww_params: Vec<String>,
@@ -33,7 +41,6 @@ struct GlobalConfig {
     wallpaper_manager: WallpaperManagerConfig,
 }
 
-// --- Config Loader Function ---
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
         .context("Cannot find home dir")?
@@ -47,7 +54,8 @@ fn load_config() -> Result<GlobalConfig> {
     
     Ok(config)
 }
-
+// --- IPC Structures ---
+// These match the JSON output of hyprctl and swaymsg
 #[derive(Deserialize, Debug)]
 struct HyprMonitor {
     name: String,
@@ -63,7 +71,8 @@ struct Wallpaper {
     path: PathBuf,
     thumb_path: PathBuf,
 }
-
+/// Heuristic to determine the running Window Manager.
+/// Checks IPC sockets and Environment variables.
 fn get_compositor() -> String {
     if env::var("NIRI_SOCKET").is_ok() { return "niri".to_string(); }
     if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() { return "hyprland".to_string(); }
@@ -77,11 +86,13 @@ fn get_compositor() -> String {
     }
     "unknown".to_string()
 }
-
+/// Queries the compositor for a list of connected screens.
+/// This allows per-monitor wallpaper setting.
 fn get_monitor_list(compositor: &str) -> Result<Vec<String>> {
     let output;
     match compositor {
         "hyprland" => {
+            // Parse `hyprctl monitors -j`
             output = Command::new("hyprctl").arg("-j").arg("monitors").output()?;
             if !output.status.success() {
                 anyhow::bail!("hyprctl command failed");
@@ -91,6 +102,7 @@ fn get_monitor_list(compositor: &str) -> Result<Vec<String>> {
             Ok(monitors.into_iter().map(|m| m.name).collect())
         }
         "sway" => {
+            // Parse `swaymsg -t get_outputs`
             output = Command::new("swaymsg").arg("-t").arg("get_outputs").output()?;
             if !output.status.success() {
                 anyhow::bail!("swaymsg command failed");
@@ -104,6 +116,7 @@ fn get_monitor_list(compositor: &str) -> Result<Vec<String>> {
                 .collect())
         }
         "niri" => {
+            // Niri uses swww-daemon as its "state of truth" for monitors context
             output = Command::new("swww")
                 .arg("query")
                 .arg("--namespace")
@@ -126,7 +139,8 @@ fn get_monitor_list(compositor: &str) -> Result<Vec<String>> {
         _ => Err(anyhow!("Unknown compositor for monitor detection")),
     }
 }
-
+/// Wraps the `rofi` command line interface.
+/// Pipes the list of items into rofi's STDIN and captures the selection from STDOUT.
 fn ask_rofi(prompt: &str, items: Vec<String>, config: Option<(&Path, &str)>) -> Result<String> {
     let items_str = items.join("\n");
     let mut cmd = Command::new("rofi");
@@ -135,8 +149,10 @@ fn ask_rofi(prompt: &str, items: Vec<String>, config: Option<(&Path, &str)>) -> 
         cmd.arg("-config").arg(conf);
         cmd.arg("-theme-str").arg(theme);
     }
+    // Pipe handling
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
     let mut child = cmd.spawn().context("Failed to spawn rofi")?;
+    // Write options to rofi
     child.stdin.as_mut().unwrap().write_all(items_str.as_bytes())?;
     let output = child.wait_with_output()?;
     if !output.status.success() {
@@ -145,29 +161,25 @@ fn ask_rofi(prompt: &str, items: Vec<String>, config: Option<(&Path, &str)>) -> 
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-// ---
-// main function
-// ---
 fn main() -> Result<()> {
     let global_config = load_config()?;
     let config = global_config.wallpaper_manager;
-    // compositor detection
+    // Environment Discovery
     let compositor = get_compositor();
     if compositor == "unknown" {
         anyhow::bail!("No supported compositor running.");
     }
 
-    // Get Monitor List
+    // Hardware Discovery
     let monitor_list = get_monitor_list(&compositor)?;
     if monitor_list.is_empty() {
         anyhow::bail!("Could not detect any active monitors.");
     }
 
-    // Ask user to pick a monitor (Rofi 1)
+    // User Interaction (Monitor Selection)
     let chosen_monitor = ask_rofi("Select monitor", monitor_list, None)?;
-    // ---
-    // All the logic for picking a wallpaper
-    // ---
+    // Load Cache (Fast Path)
+    // I read the pre-computed JSON index instead of scanning the disk.
     let cache_file = expand_path(&config.cache_file);
     if !cache_file.exists() {
         anyhow::bail!("Wallpaper cache missing! Please run 'wp-daemon' first.");
@@ -176,25 +188,25 @@ fn main() -> Result<()> {
     let json_str = fs::read_to_string(&cache_file)?;
     let mut wallpapers: Vec<Wallpaper> = serde_json::from_str(&json_str)?;
     wallpapers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-
+    // Build Rofi Menu with Icons
+    // Rofi supports icons via the `\0icon\x1f` delimiter syntax.
     let rofi_items: Vec<String> = wallpapers.iter().map(|wp| {
         format!("{}\0icon\x1f{}", wp.name, wp.thumb_path.to_string_lossy())
     }).collect();
     let rofi_conf_path = expand_path(&config.rofi_config_path);
-
+    // User Interaction (Wallpaper Selection)
     let selection_name = ask_rofi(
         "Select Wallpaper",
         rofi_items,
         Some((&rofi_conf_path, &config.rofi_theme_override))
     )?;
-
+    // Execution
+    // Determine the absolute path of the sibling binary `wp-apply` and execute it.
     let selected_wp = wallpapers.into_iter().find(|w| w.name == selection_name)
         .ok_or_else(|| anyhow!("Selected wallpaper not found in cache"))?;
-    // Call apply script
     let current_exe = env::current_exe()?;
     let apply_path = current_exe.parent().unwrap().join("wp-apply");
 
-    // Call 'wp-apply' using its full path
     Command::new(apply_path)
         .arg(selected_wp.path)
         .arg(&compositor)

@@ -3,6 +3,7 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 use crate::network::{FinnhubQuote, YahooSearchResult};
+use crate::app::InputMode::Normal;
 
 /// Defines the input state of the TUI.
 /// We use a state machine approach to change keybindings based on context.
@@ -12,7 +13,7 @@ pub enum InputMode {
     Editing,  // Typing in the search bar
     KeyEntry, // Force-prompt for API key on first run
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub stocks: Vec<String>,
     pub api_key: Option<String>,
@@ -30,6 +31,30 @@ impl Default for Config {
             ],
             api_key: None,
         }
+    }
+}
+/// Defines the data for the detailed stock view.
+#[derive(Debug, Clone)]
+pub struct StockDetails {
+    pub market_cap: u64,
+    pub pe_ratio: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub high_52w: f64,
+    pub low_52w: f64,
+    pub year_return: Option<f64>,
+}
+/// Defines the current market status (bond yields, yield curve etc)
+#[derive(Debug, Clone)]
+pub struct MarketStatus {
+    pub yield_10y: f64,
+    pub yield_5y: f64,
+    pub yield_3m: f64,
+}
+/// Calculation for yield curve.
+impl MarketStatus {
+    // Calculate the 10Y - 3M spread
+    pub fn spread_10y_3m(&self) -> f64 {
+        self.yield_10y - self.yield_3m
     }
 }
 /// Holds the runtime state of the TUI application.
@@ -65,7 +90,7 @@ impl App {
         state.select(Some(0));
         // Detect if this is a first run (missing API key) and force KeyEntry mode.
         let (input_mode, msg, color) = if config.api_key.is_some() {
-            (InputMode::Normal, message, message_color)
+            (Normal, message, message_color)
         } else {
             (
                 InputMode::KeyEntry,
@@ -91,100 +116,60 @@ impl App {
         }
     }
     /// Moves the selection index down, wrapping around if necessary.
-    pub fn next_search(&mut self) {
-        let i = match self.search_state.selected() {
-            Some(i) => {
-                if i >= self.search_results.len().saturating_sub(1) {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.search_state.select(Some(i));
-    }
-    pub fn previous_search(&mut self) {
-        let i = match self.search_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.search_results.len().saturating_sub(1)
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.search_state.select(Some(i));
-    }
     pub fn next(&mut self) {
+        if self.stocks.is_empty() { return; }
         let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.stocks.len() -1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
+            Some(i) => (i + 1) % self.stocks.len(),
             None => 0,
         };
         self.state.select(Some(i));
     }
+
     pub fn previous(&mut self) {
+        if self.stocks.is_empty() { return; }
         let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.stocks.len() -1
-                } else {
-                    i-1
-                }
-            }
+            Some(i) => (i + self.stocks.len() - 1) % self.stocks.len(),
             None => 0,
         };
         self.state.select(Some(i));
     }
+
+    /// Helper to export state for saving
+    pub fn to_config(&self) -> Config {
+        Config {
+            stocks: self.stocks.clone(),
+            api_key: self.api_key.clone(),
+        }
+    }
+
     pub fn delete(&mut self) {
         if let Some(selected) = self.state.selected() {
-            if self.stocks.is_empty() {
-                return;
-            }
-            //Remove the item from the data
+            if self.stocks.is_empty() { return; }
             self.stocks.remove(selected);
-            //Dealing with the state
+            
             if self.stocks.is_empty() {
                 self.state.select(None);
             } else if selected >= self.stocks.len() {
-                //delete the last item, move the cursor up one
                 self.state.select(Some(self.stocks.len() - 1));
             }
-            //If we delete from the middle the cursor will land on next item 
-            //so I'm going to attempt adding nothing here
         }
     }
-}
+    
+    pub fn next_search(&mut self) {
+        if self.search_results.is_empty() { return; }
+        let i = match self.search_state.selected() {
+            Some(i) => (i + 1) % self.search_results.len(),
+            None => 0,
+        };
+        self.search_state.select(Some(i));
+    }
 
-/// Defines the data for the detailed stock view.
-#[derive(Debug, Clone)]
-pub struct StockDetails {
-    pub market_cap: u64,
-    pub pe_ratio: Option<f64>,
-    pub dividend_yield: Option<f64>,
-    pub high_52w: f64,
-    pub low_52w: f64,
-    pub year_return: Option<f64>,
-}
-/// Defines the current market status (bond yields, yield curve etc)
-#[derive(Debug, Clone)]
-pub struct MarketStatus {
-    pub yield_10y: f64,
-    pub yield_5y: f64,
-    pub yield_3m: f64,
-}
-/// Calculation for yield curve.
-impl MarketStatus {
-    // Calculate the 10Y - 3M spread
-    pub fn spread_10y_3m(&self) -> f64 {
-        self.yield_10y - self.yield_3m
+    pub fn previous_search(&mut self) {
+        if self.search_results.is_empty() { return; }
+        let i = match self.search_state.selected() {
+            Some(i) => (i + self.search_results.len() - 1) % self.search_results.len(),
+            None => 0,
+        };
+        self.search_state.select(Some(i));
     }
 }
-

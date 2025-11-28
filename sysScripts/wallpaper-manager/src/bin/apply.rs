@@ -1,26 +1,32 @@
+//! Wallpaper Executor (wp-apply)
+//!
+//! A specialized utility responsible for the side-effects of changing the desktop background.
+//! It abstracts away the differences between Wayland compositors (Hyprland, Sway, Niri)
+//! so the selection tool doesn't need to know the implementation details.
+
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use anyhow::{Context, Result};
-use dirs;
 use std::fs;
 use serde::Deserialize;
-use toml;
 
+/// Resolves shell-style paths (e.g., "~/Pictures") to absolute system paths.
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct WallpaperManagerConfig {
-    swww_params: Vec<String>,
-    swaybg_cache_file: String,
-    hyprland_refresh_script: String,
+    swww_params: Vec<String>,        // Transition effects for swww
+    swaybg_cache_file: String,       // Where Sway stores its current state
+    hyprland_refresh_script: String, // Hook to reload Hyprland colors (e.g., Pywal)
     wallpaper_dir: String,
 }
 
@@ -43,26 +49,30 @@ fn load_config() -> Result<GlobalConfig> {
     Ok(config)
 }
 
-// pkill Helper
+// Helper to ensure competing wallpaper daemons are killed before starting a new one.
 fn pkill(name: &str) {
     Command::new("pkill").arg("-x").arg(name).status().ok();
 }
 
-// ---
-// Specialized "apply" functions
-// ---
+// --- Compositor Strategies ---
 
+/// Applies wallpaper using `swww` (Solution for Hyprland/Niri).
+/// Supports animated transitions and per-monitor namespaces.
 fn apply_swww_wallpaper(selected_file: &Path, monitor: &str, namespace: &str, swww_params: &[String]) -> Result<()> {
     println!("Applying wallpaper via swww (namespace: {})...", namespace);
+    // Clean up incompatible daemons
     pkill("mpvpaper");
     pkill("swaybg");
+    // Ensure the daemon is running in the background
     let _ = Command::new("swww-daemon")
         .arg("--namespace")
         .arg(namespace)
         .arg("--format")
         .arg("argb")
         .spawn();
+    // Wait briefly for daemon startup race conditions
     std::thread::sleep(std::time::Duration::from_millis(100));
+    // Send the image command
     Command::new("swww")
         .arg("img") 
         .arg("--namespace")
@@ -75,9 +85,11 @@ fn apply_swww_wallpaper(selected_file: &Path, monitor: &str, namespace: &str, sw
         .context("swww img command failed")?;
     Ok(())
 }
-
+/// Applies wallpaper using `swaybg` (Solution for Sway).
+/// Swaybg is static and requires manual process management.
 fn apply_sway_wallpaper(selected_file: &Path, monitor: &str, cache_filename: &str) -> Result<()> {
     println!("Applying wallpaper for Sway...");
+    // Kill swww as it conflicts with swaybg
     pkill("swww-daemon");
     pkill("hyprpaper");
     Command::new("swaybg")
@@ -88,7 +100,7 @@ fn apply_sway_wallpaper(selected_file: &Path, monitor: &str, cache_filename: &st
         .spawn()
         .context("Failed to run swaybg")?;
 
-    // --- write to the cache file ---
+    // Cache the selection so Sway can restore it on reboot (handled by external startup scripts)
     if let Some(mut cache_path) = dirs::cache_dir() {
         cache_path.push(cache_filename);
         let _ = fs::write(cache_path, selected_file.to_str().unwrap_or(""));
@@ -97,14 +109,10 @@ fn apply_sway_wallpaper(selected_file: &Path, monitor: &str, cache_filename: &st
     Ok(())
 }
 
-// ---
-// main function
-// ---
 fn main() -> Result<()> {
-    //load config
     let global_config = load_config()?;
     let config = global_config.wallpaper_manager;
-    // 1. Get arguments
+    // Parse CLI arguments passed by `wp-select`
     let args: Vec<String> = env::args().collect();
     let wallpaper_path_str = args.get(1).context("Missing wallpaper path")?;
     let compositor = args.get(2).context("Missing compositor name")?;
@@ -112,14 +120,16 @@ fn main() -> Result<()> {
 
     let wallpaper_path = PathBuf::from(wallpaper_path_str);
 
-    // 2. Route to the correct function
+    // Strategy Pattern: Dispatch based on the detected environment
     match compositor.as_str() {
         "hyprland" => {
             apply_swww_wallpaper(&wallpaper_path, monitor, "hypr", &config.swww_params)?;
+            // Trigger hook to update system colors (e.g. Waybar styles)
             let refresh_script = expand_path(&config.hyprland_refresh_script);
             Command::new("bash").arg(refresh_script).status()?;
         }
         "niri" => {
+            // Niri uses the same backend (swww) but a isolated namespace
             apply_swww_wallpaper(&wallpaper_path, monitor, "niri", &config.swww_params)?;
         }
         "sway" => {

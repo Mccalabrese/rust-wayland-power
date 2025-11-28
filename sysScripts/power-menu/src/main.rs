@@ -1,34 +1,46 @@
+//! Power Menu Manager (power-menu)
+//!
+//! A dynamic wrapper for `wlogout` that adapts layout and margins based on the 
+//! current monitor resolution and scaling factor.
+//!
+//! Purpose:
+//! On Wayland, absolute pixel values in CSS/config don't always scale correctly across
+//! mixed-DPI setups (e.g., 4K laptop + 1080p monitor). This tool:
+//! 1. Detects the active monitor's logical height.
+//! 2. Selects a predefined "Tier" from `config.toml` (e.g., res_2160, res_1080).
+//! 3. Calculates precise top/bottom margins to vertically center the menu perfectly.
+//! 4. Acts as a toggle: Running it while the menu is open closes it gracefully.
+
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use serde::Deserialize;
-use serde_json;
 use std::env;
 use std::process::Command;
-use toml;
 use std::fs;
 
-// --- Config Structs (from config.toml) ---
+// --- Config Models ---
 #[derive(Deserialize, Debug)]
 struct MarginConfig {
-    top_margin: f64,
-    bottom_margin: f64,
-    columns: Option<i32>,
+    top_margin: f64,      // Logical pixels from top
+    bottom_margin: f64,   // Logical pixels from bottom
+    columns: Option<i32>, // Optional override for column count at this resolution
 }
 #[derive(Deserialize, Debug)]
 struct PowerMenuConfig {
-    columns: i32,
-    res_2160: MarginConfig,
-    res_1600: MarginConfig,
-    res_1440: MarginConfig,
-    res_1080: MarginConfig,
-    res_720: MarginConfig,
+    columns: i32,           // Default column count
+    //tiers for different logical heights
+    res_2160: MarginConfig, // 4K
+    res_1600: MarginConfig, // Ultrawide/Laptop
+    res_1440: MarginConfig, // QHD
+    res_1080: MarginConfig, // FHD
+    res_720: MarginConfig,  // HD
 }
 #[derive(Deserialize, Debug)]
 struct GlobalConfig {
     power_menu: PowerMenuConfig,
 }
 
-// --- Hyprland JSON Struct ---
+// --- IPC Response Models ---
 #[derive(Deserialize, Debug)]
 struct HyprMonitor {
     height: i32,
@@ -36,7 +48,6 @@ struct HyprMonitor {
     focused: bool,
 }
 
-// --- Sway JSON Structs ---
 #[derive(Deserialize, Debug)]
 struct SwayOutput {
     focused: bool,
@@ -48,11 +59,14 @@ struct SwayMode {
     height: i32,
 }
 
-// --- Helper: Get Compositor ---
+// --- Environment Detection ---
+
+/// Identifies the active Wayland compositor via IPC sockets or XDG variables.
 fn get_compositor() -> String {
     if env::var("NIRI_SOCKET").is_ok() { return "niri".to_string(); }
     if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() { return "hyprland".to_string(); }
     if env::var("SWAYSOCK").is_ok() { return "sway".to_string(); }
+    // Fallback
     if let Ok(d) = env::var("XDG_CURRENT_DESKTOP") {
         let d = d.to_lowercase();
         if d.contains("niri") { return "niri".to_string(); }
@@ -63,7 +77,6 @@ fn get_compositor() -> String {
     "unknown".to_string()
 }
 
-// --- Helper: Load Config ---
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
         .context("Cannot find home dir")?
@@ -75,19 +88,24 @@ fn load_config() -> Result<GlobalConfig> {
     Ok(config)
 }
 
-// --- Kill Existing wlogout ---
+// --- Process Management ---
+
+/// Checks if `wlogout` is already running. If so, kills it and returns true.
+/// This implements the "Toggle" behavior (Open -> Close).
 fn check_and_kill_wlogout() -> bool {
     let status = Command::new("pkill")
         .arg("-x")
         .arg("wlogout")
         .status();
     match status {
-        Ok(s) => s.success(),
+        Ok(s) => s.success(), // True if process found and killed
         Err(_) => false,
     }
 }
 
-// --- Data Fetcher: Hyprland (JSON) ---
+// --- Resolution Fetchers (Strategy Pattern) ---
+
+/// Queries Hyprland via `hyprctl`.
 fn get_hyprland_data() -> Result<(f64, f64)> {
     let output = Command::new("hyprctl")
         .arg("-j")
@@ -99,13 +117,13 @@ fn get_hyprland_data() -> Result<(f64, f64)> {
     }
     
     let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)?;
-    
+    // I need the focused monitor to ensure the menu opens on the correct screen with correct scaling.
     monitors.iter().find(|m| m.focused)
         .map(|m| (m.height as f64, m.scale))
         .ok_or_else(|| anyhow!("No focused monitor"))
 }
 
-// --- Data Fetcher: Sway (JSON) ---
+/// Queries Sway via `swaymsg`.
 fn get_sway_data() -> Result<(f64, f64)> {
     let output = Command::new("swaymsg")
         .arg("-t")
@@ -119,6 +137,7 @@ fn get_sway_data() -> Result<(f64, f64)> {
     let monitors: Vec<SwayOutput> = serde_json::from_slice(&output.stdout)?;
 
     if let Some(m) = monitors.iter().find(|m| m.focused) {
+        // Sway reports raw pixels. We must divide by scale to get logical pixels.
         let logical = (m.current_mode.height as f64) / m.scale;
         Ok((logical, m.scale))
     } else {
@@ -126,7 +145,8 @@ fn get_sway_data() -> Result<(f64, f64)> {
     }
 }
 
-// --- Data Fetcher: Niri (Regex) ---
+/// Queries Niri via `niri msg`.
+/// Niri output is human-readable text, so we parse with Regex.
 fn get_niri_data() -> Result<(f64, f64)> {
     let output = Command::new("niri")
         .arg("msg")
@@ -135,7 +155,7 @@ fn get_niri_data() -> Result<(f64, f64)> {
     
     let output_str = String::from_utf8_lossy(&output.stdout);
 
-    // Niri doesn't specify focused, so we parse the first monitor
+    // Regex extraction
     let mode_re = Regex::new(r"Current mode: (\d+)x(\d+) @")?;
     let scale_re = Regex::new(r"Scale: ([\d\.]+)")?;
 
@@ -150,11 +170,11 @@ fn get_niri_data() -> Result<(f64, f64)> {
     Ok((height / scale, scale))
 }
 
-// --- The Math ---
-// This function takes the logical height and picks the right margin from config
+// --- Layout Calculation ---
+
+/// Determines the correct margins based on Logical Height.
+/// This creates a "Responsive Breakpoint" system similar to CSS frameworks.
 fn calculate_margins(logical_height: f64, config: &PowerMenuConfig) -> (i32, i32, i32) {
-    
-    // Find the right config "tier" based on the logical height
     let (margin_config, default_cols) = if logical_height >= 2160.0 {
         (&config.res_2160, config.columns)
     } else if logical_height >= 1600.0 {
@@ -167,32 +187,24 @@ fn calculate_margins(logical_height: f64, config: &PowerMenuConfig) -> (i32, i32
         (&config.res_720, config.columns)
     };
     
-    // I just used the margins directly as logical pixels.
-    // wlogout will handle scaling them based on the monitor's scale factor.
     let top = margin_config.top_margin as i32;
     let bottom = margin_config.bottom_margin as i32;
-    
-    // Use the tier-specific column count, or fall back to the global default
     let cols = margin_config.columns.unwrap_or(default_cols);
     
     (top, bottom, cols)
 }
 
-// --- Main Function ---
 fn main() -> Result<()> {
-    // 1. Load config
     let global_config = load_config()?;
     let config = global_config.power_menu;
 
-    // 2. Check/kill existing wlogout
+    // Toggle Logic
     if check_and_kill_wlogout() {
-        return Ok(()); // Toggled off, exit gracefully
+        return Ok(()); //Existing instance killed, exit.
     }
 
-    // 3. Get compositor
+    // Environment Data
     let compositor = get_compositor();
-
-    // 4. Get normalized data: (LogicalHeight, Scale)
     let (logical_height, _scale) = match compositor.as_str() {
         "hyprland" => get_hyprland_data()?,
         "sway" => get_sway_data()?,
@@ -203,10 +215,11 @@ fn main() -> Result<()> {
         }
     };
     
-    // 5. Do the math (which is just selecting the tier)
+    // Layout
     let (top, bottom, cols) = calculate_margins(logical_height, &config);
 
-    // 6. Spawn wlogout with calculated args
+    // Execution
+    // We pass margins via command line arguments to override wlogout's CSS defaults.
     println!("Spawning wlogout with T={}, B={}, cols={}", top, bottom, cols);
     Command::new("wlogout")
         .arg("--protocol")

@@ -4,6 +4,7 @@ use anyhow::{Result, Context};
 use yahoo_finance_api::YahooConnector;
 use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
+use futures::future::join_all;
 use crate::config::{get_config_path, load_config};
 use crate::app::{StockDetails, MarketStatus};
 
@@ -238,10 +239,21 @@ pub async fn run_waybar_mode(client: &reqwest::Client) -> Result<()> {
             return Ok(());
         }
     };
+
+    let futures = config.stocks.iter().map(|symbol| {
+        let client = client.clone();
+        let key = api_key.clone();
+        let sym = symbol.clone();
+        async move {
+            let q = fetch_quote(&client, &sym, &key).await;
+            (sym, q)
+        }
+    });
+    let results = join_all(futures).await;
     let mut text_parts = Vec::new();
     let mut tooltip_parts = Vec::new();
-    for symbol in &config.stocks {
-        match fetch_quote(client, symbol, api_key).await {
+    for (symbol, result) in results {
+        match result {
             Ok(quote) => {
                 let (color, icon) = if quote.percent >= 0.0 {
                     ("#a6e3a1", "")

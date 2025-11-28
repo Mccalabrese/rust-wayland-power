@@ -1,23 +1,37 @@
+//! Cloudflare DNS Toggler (cf-toggle)
+//!
+//! A secure wrapper for toggling system-level DNS-over-HTTPS settings.
+//!
+//! Architecture:
+//! 1. **User Mode:** When run by a normal user (e.g., clicking Waybar), it detects the current state 
+//!    and re-executes *itself* using `pkexec` to gain root privileges.
+//! 2. **Root Mode:** When executed with root privileges (via pkexec), it modifies `/etc/resolv.conf`
+//!    and manages the `systemd` service.
+//!
+//! This design avoids needing `sudo` in scripts or storing passwords.
+
 use std::env;
 use std::fs;
 use std::process::Command;
 use anyhow::{Context, Result};
 use serde::Deserialize; 
-use toml; 
 
-// --- 1. Config Structs (Same as status.rs) ---
+// --- Configuration ---
+// Deserialize the full config struct even if we don't use all fields in this binary,
+// ensuring we validate the schema correctness early.
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct Config {
-    //Ignored fields but serde is making me take them
+    // JSON Output fields (Used by cf-status)
     text_on: String,
     class_on: String,
     text_off: String,
     class_off: String,
-    //the actual ones I need
-    resolv_content_on: String,
-    resolv_content_off: String,
-    bar_process_name: String,
-    bar_signal_num: i32,
+    // Logic fields (Used by cf-toggle)
+    resolv_content_on: String,   // e.g. "nameserver 127.0.0.1"
+    resolv_content_off: String,  // e.g. "nameserver 1.1.1.1"
+    bar_process_name: String,    // "waybar"
+    bar_signal_num: i32,         // Signal offset
 }
 
 #[derive(Deserialize, Debug)]
@@ -25,7 +39,6 @@ struct GlobalConfig {
     cloudflare_toggle: Config,
 }
 
-// --- 2. Config Loader (Same as status.rs) ---
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
         .context("Cannot find home dir")?
@@ -37,14 +50,16 @@ fn load_config() -> Result<GlobalConfig> {
     Ok(config)
 }
 
-// --- 3. run_as_user ---
+// --- User Mode (Phase 1) ---
+
+/// The entry point for the standard user.
+/// Determines the desired state change and requests Root access to perform it.
 fn run_as_user() -> Result<()> {
-    // Load config for Waybar signal
     let config = load_config()
         .context("Failed to load config for user")?
         .cloudflare_toggle;
 
-    // Check status 
+    // Check current service status to toggle it
     let is_running = Command::new("systemctl")
         .arg("is-active")
         .arg("cloudflared-dns")
@@ -55,9 +70,13 @@ fn run_as_user() -> Result<()> {
     let mode = if is_running { "--stop" } else { "--start" };
     let content_on = &config.resolv_content_on;
     let content_off = &config.resolv_content_off;
-    // Run pkexec 
+    // Self-Reference: Find where this binary lives so we can execute it as root
     let self_exe = env::current_exe()
         .context("Failed to get path to own executable")?;
+
+    // Privilege Escalation
+    // We pass the config values as arguments to the root process so the root process
+    // doesn't have to try and locate/read the user's home directory config file.
     let status = Command::new("pkexec")
         .arg(self_exe)
         .arg(mode)
@@ -66,7 +85,7 @@ fn run_as_user() -> Result<()> {
         .status()
         .context("Failed to run pkexec")?;
 
-    // Send signal HARDCODING SIGRTMIN to 34!!!!
+    // Signal Waybar to refresh status immediately on success
     if status.success() {
         let sig_base = 34;
         let signal = sig_base + config.bar_signal_num;
@@ -79,10 +98,14 @@ fn run_as_user() -> Result<()> {
     Ok(())
 }
 
-// --- 4. run_as_root ---
+// --- Root Mode (Phase 2) ---
+
+/// The privileged worker.
+/// This function only runs when `pkexec` invokes this binary.
+/// It has permission to write to /etc/ and control systemd.
 fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
     if mode == "--start" {
-        // Start service
+        // Enable service
         Command::new("systemctl")
             .arg("enable")
             .arg("--now")
@@ -92,12 +115,12 @@ fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
             .then_some(())
             .context("Failed to start systemctl service")?;
 
-        // Write resolv.conf from config
+        // Overwrite DNS
         fs::write("/etc/resolv.conf", content_on)
             .context("Failed to write /etc/resolv.conf")?;
 
     } else if mode == "--stop" {
-        // Stop service 
+        // Disable Service
         Command::new("systemctl")
             .arg("disable")
             .arg("--now")
@@ -107,18 +130,22 @@ fn run_as_root(mode: &str, content_on: &str, content_off: &str) -> Result<()> {
             .then_some(())
             .context("Failed to stop systemctl service")?;
         
-        // Write resolv.conf from config
+        // Restore DNS
         fs::write("/etc/resolv.conf", content_off)
             .context("Failed to write /etc/resolv.conf")?;
     }
     Ok(())
 }
 
-// --- 5. Main ---
+// --- Main Dispatcher ---
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
+
+    // Detect Mode based on arguments
+    // If arguments exist, we assume we are the child process running as Root.
     if args.len() > 1 {
         let mode = &args[1];
+        // Simple validation to ensure we are in the expected state
         if mode != "--start" && mode != "--stop" {
             if args.len() < 4 {
                 eprintln!("Internal Error: Missing arguments for root mode.");
@@ -133,6 +160,7 @@ fn main() -> Result<()> {
             run_as_root(mode, content_on, content_off)
         }
     } else {
+        // No arguments? We are the user clicking the button.
         run_as_user()
     }
 }

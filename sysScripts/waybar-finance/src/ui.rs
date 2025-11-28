@@ -67,17 +67,15 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
     let client_clone = client.clone();
     let tx_clone = tx.clone();
     tokio::spawn(async move {
-        let client = client_clone;
-        let tx = tx_clone;
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(180));
         loop {
-            match crate::network::fetch_market_status(&client).await {
+            interval.tick().await;
+            match crate::network::fetch_market_status(&client_clone).await {
                 Ok(status) => {
-                    let _ = tx.send(AppEvent::MarketFetched(Ok(status)));
-                    break;
+                    let _ = tx_clone.send(AppEvent::MarketFetched(Ok(status)));
                 }
                 Err(e) => {
-                    let _ = tx.send(AppEvent::MarketFetched(Err(e)));
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let _ = tx_clone.send(AppEvent::MarketFetched(Err(e)));
                 }
             }
         }
@@ -159,7 +157,7 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
                                             app.message_color = Color::Green;
             
                                             // 3. Save to Disk IMMEDIATELY
-                                            if let Err(e) = save_config(app) {
+                                            if let Err(e) = save_config(&app.to_config()) {
                                                 app.message = format!("Failed to save config: {}", e);
                                                 app.message_color = Color::Red;
                                             }
@@ -291,7 +289,7 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
             terminal.backend_mut().execute(LeaveAlternateScreen)?;
             disable_raw_mode()?;
             //save new config
-            save_config(app)?;
+            save_config(&app.to_config())?;
             std::process::exit(0);
         }
     }

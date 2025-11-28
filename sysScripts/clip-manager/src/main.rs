@@ -1,3 +1,13 @@
+//! Clipboard Manager (clip-manager)
+//!
+//! A native Rust interface for `cliphist` (clipboard history manager) using `rofi`.
+//!
+//! Architecture:
+//! 1. **Pipelining:** Replaces complex shell pipelines (`cliphist list | rofi | cliphist decode | wl-copy`) 
+//!    with safe, type-checked process chaining.
+//! 2. **State Loop:** Implements a refresh loop so deleting an item (Ctrl+Del) immediately 
+//!    re-opens the menu without the app closing.
+
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -6,15 +16,15 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
 
-// --- Config Structs ---
+// --- Config Models ---
 #[derive(Deserialize, Debug)]
 struct ClipConfig {
     rofi_config: String,
@@ -26,7 +36,6 @@ struct GlobalConfig {
     clip_manager: ClipConfig,
 }
 
-// --- Config Loader ---
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
         .context("Cannot find home dir")?
@@ -38,9 +47,10 @@ fn load_config() -> Result<GlobalConfig> {
     Ok(config)
 }
 
-// --- Logic ---
+// --- Core Process Wrappers ---
 
-// Runs "cliphist list" and returns the stdout
+/// Fetches the raw list of clipboard history items.
+/// This replaces `cliphist list`.
 fn get_cliphist_list() -> Result<String> {
     let output = Command::new("cliphist")
         .arg("list")
@@ -54,9 +64,11 @@ fn get_cliphist_list() -> Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-// Runs "cliphist decode" on a selection and copies it to clipboard
+/// Decodes the selected item and copies it to the Wayland clipboard.
+/// This manually implements the pipe: `echo "selection" | cliphist decode | wl-copy`.
 fn decode_and_copy(selection: &str) -> Result<()> {
-    // 1. Spawn `cliphist decode`
+    // Spawn `cliphist decode` (The Producer)
+    // Pipe both stdin (to feed it the selection) and stdout (to catch the decoded image/text).
     let mut cliphist_child = Command::new("cliphist")
         .arg("decode")
         .stdin(Stdio::piped())
@@ -64,23 +76,25 @@ fn decode_and_copy(selection: &str) -> Result<()> {
         .spawn()
         .context("Failed to spawn 'cliphist decode'")?;
 
-    // 2. Write the selected item (from Rofi) to cliphist's stdin
+    // Feed selection to cliphist
     if let Some(mut stdin) = cliphist_child.stdin.take() {
         stdin.write_all(selection.as_bytes())
              .context("Failed to write to cliphist stdin")?;
     }
 
-    // 3. Take ownership of cliphist's stdout stream
+    // Capture the output stream
     let cliphist_stdout = cliphist_child.stdout.take()
         .context("Failed to get stdout from cliphist")?;
 
-    // 4. Spawn `wl-copy` and tell it to use cliphist's stdout as its stdin
+    // Spawn `wl-copy` (The Consumer)
+    // Connect the stdout of `cliphist` directly to the stdin of `wl-copy`.
+    // This creates a highly efficient OS-level pipe without buffering data in Rust RAM.
     let wl_copy_status = Command::new("wl-copy")
         .stdin(cliphist_stdout) 
         .status()
         .context("Failed to spawn 'wl-copy'")?;
     
-    // 5. Wait for the original cliphist process to finish
+    // Cleanup
     cliphist_child.wait()?;
 
     if !wl_copy_status.success() {
@@ -90,7 +104,7 @@ fn decode_and_copy(selection: &str) -> Result<()> {
     Ok(())
 }
 
-// Runs "cliphist delete" on a selection
+// --- Modification Actions ---
 fn delete_entry(selection: &str) -> Result<()> {
     let mut child = Command::new("cliphist")
         .arg("delete")
@@ -111,7 +125,6 @@ fn delete_entry(selection: &str) -> Result<()> {
     Ok(())
 }
 
-// Runs "cliphist wipe"
 fn wipe_history() -> Result<()> {
     let status = Command::new("cliphist")
         .arg("wipe")
@@ -125,17 +138,21 @@ fn wipe_history() -> Result<()> {
     Ok(())
 }
 
-// Shows the Rofi menu and returns the selected item AND the exit code
+// --- UI Logic ---
+
+/// Launches Rofi with custom keybindings.
+/// Returns the Exit Code (to detect special actions) and the selected string.
 fn show_rofi(list: &str, config: &ClipConfig) -> Result<(i32, String)> {
     let rofi_config_path = expand_path(&config.rofi_config);
 
     let mut child = Command::new("rofi")
         .arg("-i") 
         .arg("-dmenu")
+        // Bind custom keys for actions
         .arg("-kb-custom-1")
-        .arg("Control+Delete")
+        .arg("Control+Delete") // Exit Code 10
         .arg("-kb-custom-2")
-        .arg("Alt+Delete")
+        .arg("Alt+Delete")     // Exit Code 11
         .arg("-config")
         .arg(rofi_config_path)
         .arg("-mesg")
@@ -150,48 +167,43 @@ fn show_rofi(list: &str, config: &ClipConfig) -> Result<(i32, String)> {
     }
 
     let output = child.wait_with_output()?;
-    
     let selection = String::from_utf8(output.stdout)?.trim().to_string();
-
-    let exit_code = output.status.code().unwrap_or(1); // Default to 1 (Esc) if it fails
+    let exit_code = output.status.code().unwrap_or(1); // Default to 1 (Cancel) on failure
 
     Ok((exit_code, selection))
 }
 
 
 fn main() -> Result<()> {
-
+    // Main Event Loop
+    // Allows the menu to persist after performing an action like Delete.
     loop {
-        // 1. Load config and get history
+        //Refresh data
         let config = load_config()?.clip_manager;
         let history_list = get_cliphist_list()?;
 
-        // 2. Show Rofi and get the user's action
+        // User Interaction
         let (exit_code, selection) = show_rofi(&history_list, &config)?;
 
-        // 3. Match on the exit code (this replaces the 'case $?' in bash)
+        // Action Dispatch based on Rofi Exit Code
         match exit_code {
-            0 => { // 0 = Enter
+            0 => { // Enter: Copy & Exit 
                 if selection.is_empty() {
-                    continue; // Rofi was launched but nothing selected
+                    continue;
                 }
-                // User selected an item, so we copy it and exit
                 decode_and_copy(&selection)?;
                 break;
             }
-            1 => break, // 1 = Esc, exit loop
-            10 => { // 10 = Ctrl+Del
-                // User wants to delete one item, so we delete and *loop again*
+            1 => break, // 1 = Esc: exit loop
+            10 => { // 10 = Ctrl+Del: Delete Item
                 delete_entry(&selection)?;
-                continue; 
+                continue; // Re-loop to show updated list 
             }
-            11 => { // 11 = Alt+Del
-                // User wants to wipe history, so we wipe and *loop again*
+            11 => { // 11 = Alt+Del: Wipe All
                 wipe_history()?;
                 continue; 
             }
             _ => {
-                // Unknown exit code, just exit
                 break;
             }
         }

@@ -22,6 +22,7 @@
       "disk"
     ],
     "modules-center": [
+      "custom/separator#blank",
       "custom/radio",
       "clock",
       "custom/hint",
@@ -72,8 +73,9 @@
       "wlr/taskbar"
     ],
     "modules-right": [
-      "custom/finance",
       "tray",
+      "custom/finance",
+      "custom/separator#blank",
       "custom/cloudflared",
       "custom/lock",
       "group/notify",

@@ -1,32 +1,41 @@
+//! System Update Wrapper (sys-update)
+//!
+//! A robust automation tool for Arch Linux system maintenance.
+//! 1. Reads configuration from `~/.config/rust-dotfiles/config.toml`.
+//! 2. Verifies that necessary binaries (`ghostty`, `yay`, etc.) exist before execution.
+//! 3. Wraps the package manager (`yay`/`pacman`) in a GUI terminal window so the user can see progress and enter `sudo` passwords.
+//! 4. Chains system updates with firmware updates (`fwupdmgr`).
+//! 5. Provides desktop notifications on success/failure using `notify-rust`.
+
 use std::fs;
 use std::process::{Command, Stdio};
 use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use notify_rust::{Notification, Urgency};
 use serde::Deserialize;
-use toml;
 
+/// Expands shell-style paths like `~/` to absolute system paths.
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
-// 🐧🐧🐧 Config Structs 🐧🐧🐧
+// 🐧🐧🐧 Config Models 🐧🐧🐧
 
 #[derive(Deserialize, Debug)]
 struct Global {
-    terminal: String,
+    terminal: String, // The user's preferred terminal emulator
 }
 
 #[derive(Deserialize, Debug)]
 struct UpdaterConfig {
-    update_command: Vec<String>,
-    icon_success: String,
-    icon_error: String,
-    window_title: String,
+    update_command: Vec<String>, //The actual update command (e.g. "yay", "-Syu")
+    icon_success: String,        //Path to success icon
+    icon_error: String,          // Path to error icon
+    window_title: String,        // Title for the window manager to target rules
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,8 +44,8 @@ struct GlobalConfig {
     updater: UpdaterConfig,
 }
 
-// --- Config Loader ---
-
+/// Loads and parses the TOML configuration file.
+/// Centralizes all settings so recompilation isn't needed for minor changes.
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
         .context("Cannot find home dir")?
@@ -52,17 +61,18 @@ fn load_config() -> Result<GlobalConfig> {
 }
 
 // 🐧🐧🐧 Helper Functions 🐧🐧🐧
-
+/// Checks if a binary is executable in the current $PATH.
+/// Used for "Fail Fast" validation before launching the GUI.
 fn check_dependency(cmd: &str) -> bool {
     Command::new(cmd)
         .arg("--version")
-        .stdout(Stdio::null())
+        .stdout(Stdio::null()) // Suppress output
         .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
 }
-
+/// Sends a desktop notification via D-Bus.
 fn send_notification(summary: &str, body: &str, icon: &Path, urgency: Urgency) -> Result<()> {
     Notification::new()
         .summary(summary)
@@ -74,20 +84,23 @@ fn send_notification(summary: &str, body: &str, icon: &Path, urgency: Urgency) -
     Ok(())
 }
 
-// --- Main Function ---
+// --- Main Execution Flow ---
 
 fn main() -> Result<()> {
+    // Load Configuration
     let config = load_config()?;
     let global_conf = config.global;
     let updater_conf = config.updater;
 
-    // Resolve paths from config
+    // Resolve relative paths immediately to avoid runtime errors later
     let icon_error = expand_path(&updater_conf.icon_error);
     let icon_success = expand_path(&updater_conf.icon_success);
     
-    // Check dependencies (from config)
+    // 2. Dependency Verification
+    // Ensure the terminal and the update helper (e.g. 'yay') exist.
+    // If not, alert the user and abort.
     let terminal_cmd = &global_conf.terminal;
-    let update_bin = updater_conf.update_command.get(0)
+    let update_bin = updater_conf.update_command.first()
         .context("'update_command' in config.toml is empty")?;
 
     if !check_dependency(terminal_cmd) {
@@ -109,9 +122,11 @@ fn main() -> Result<()> {
         );
         return Err(anyhow!("Dependency missing: {}", update_bin));
     }
-
-    // Build the update script
-    // Safely join the command parts (e.g., ["yay", "-Syu"] -> "yay -Syu")
+    
+    // 3. Script Construction
+    // We dynamically build a Bash script to run inside the terminal.
+    // This allows us to handle exit codes ($?) and conditional execution (fwupdmgr)
+    // within the interactive session.
     let update_cmd_str = updater_conf.update_command.join(" ");
     
     let bash_script = format!(r#"
@@ -146,7 +161,9 @@ fn main() -> Result<()> {
         update_cmd_str
     );
 
-    // Launch the terminal 
+    // Interactive Execution
+    // Launch the terminal emulator running our constructed script.
+    // Wait for it to close to determine success/failure.
     let status = Command::new(terminal_cmd)
         .arg(format!("--title={}", updater_conf.window_title))
         .arg("-e")

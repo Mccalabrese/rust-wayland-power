@@ -1,28 +1,36 @@
+//! Waybar Updates Module (waybar-updates)
+//!
+//! A lightweight utility to check for system updates (Pacman/Yay) and display the count in Waybar.
+//!
+//! Design Priorities:
+//! 1. **Speed:** Checks must be fast to avoid blocking the bar startup.
+//! 2. **Resilience:** If the check fails (e.g., no internet), it falls back to the last known cached count instead of crashing or showing "Error".
+//! 3. **Visual Feedback:** Distinct JSON classes ("updates", "synced", "stale", "error") allow CSS styling in Waybar (e.g., turning red if stale).
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use toml;
 
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)
 }
 
-// --- Config Structs ---
+// --- Config Models ---
 
 #[derive(Deserialize, Debug)]
 struct UpdateCheckConfig {
-    command_string: String,
-    cache_file: String,
-    stale_icon: String,
-    error_icon: String,
+    command_string: String,  // The shell command to count updates (e.g., "checkupdates | wc -l")
+    cache_file: String,      // Path to store the last successful count
+    stale_icon: String,      // Icon to append if data is old 
+    error_icon: String,      // Icon for total failure
 }
 
 #[derive(Deserialize, Debug)]
@@ -30,14 +38,11 @@ struct GlobalConfig {
     update_check: UpdateCheckConfig,
 }
 
-// --- Cache Struct ---
-
+// --- Persistence Model ---
 #[derive(Serialize, Deserialize, Debug)]
 struct Cache {
     count: usize,
 }
-
-// --- Config Loader ---
 
 fn load_config() -> Result<GlobalConfig> {
     let config_path = dirs::home_dir()
@@ -53,7 +58,7 @@ fn load_config() -> Result<GlobalConfig> {
     Ok(config)
 }
 
-// --- Cache Read/Write Functions ---
+// --- Persistence Logic ---
 
 fn read_cache(cache_path: &Path) -> Result<Cache> {
     let json_data = fs::read_to_string(cache_path)
@@ -74,8 +79,10 @@ fn save_cache(count: usize, cache_path: &Path) -> Result<()> {
     Ok(())
 }
 
-// --- Check Function (returns a count) ---
+// --- Core Logic ---
 
+/// Executes the update check command defined in config.toml.
+/// Returns the number of updates found.
 fn run_check(command_string: &str) -> Result<usize> {
     let output = Command::new("bash")
         .arg("-c")
@@ -85,12 +92,17 @@ fn run_check(command_string: &str) -> Result<usize> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let count = stdout.trim().lines().count();
+    // Exit Code 0: Success.
     if output.status.success() {
         return Ok(count);
     }
+
+    // Exit Code 1: 'checkupdates' returns 1 if NO updates are found (not an error).
+    // We handle this edge case specifically.
     if output.status.code() == Some(1) && count == 0 {
         return Ok(0);
     }
+    // Any other exit code is a legitimate failure (e.g., DB lock, no network).
     let stderr = String::from_utf8_lossy(&output.stderr);
     anyhow::bail!("Check command failed (exit code: {}):\n{}",
         output.status.code().unwrap_or(-1),
@@ -98,8 +110,10 @@ fn run_check(command_string: &str) -> Result<usize> {
     );
 }
 
-// --- JSON Output Functions ---
+// --- Output Formatters (Waybar JSON Protocol) ---
 
+/// Standard success output.
+/// Classes: "updates" (if count > 0), "synced" (if 0).
 fn print_success_json(count: usize) {
     if count > 0 {
         println!("{}", json!({
@@ -115,7 +129,8 @@ fn print_success_json(count: usize) {
         }));
     }
 }
-
+/// Fallback output when the check fails but cache exists.
+/// Class: "stale". Adds a visual indicator (icon) to the text.
 fn print_stale_json(stale_count: usize, config: &UpdateCheckConfig) {
     println!("{}", json!({
         "text": format!("{} {}", stale_count, config.stale_icon),
@@ -126,7 +141,8 @@ fn print_stale_json(stale_count: usize, config: &UpdateCheckConfig) {
         "class": "stale"
     }));
 }
-
+/// Total failure output (Check failed AND Cache missing).
+/// Class: "error".
 fn print_error_json(config: &UpdateCheckConfig, error_msg: &str) {
     println!("{}", json!({
         "text": config.error_icon.clone(),
@@ -135,13 +151,11 @@ fn print_error_json(config: &UpdateCheckConfig, error_msg: &str) {
     }));
 }
 
-// --- Main Logic ---
-
 fn main() -> Result<()> {
     let config = match load_config() {
         Ok(global_config) => global_config.update_check,
         Err(e) => {
-            // Config-level error is unrecoverable
+            // Output JSON even on crash so Waybar renders an error icon instead of vanishing
             println!("{}", json!({
                 "text": "!",
                 "tooltip": format!("Failed to load config.toml:\n{}", e),
@@ -152,25 +166,24 @@ fn main() -> Result<()> {
     };
     
     let cache_path = expand_path(&config.cache_file);
-
+    // Strategy: Try Live Check -> Fallback to Cache -> Error
     match run_check(&config.command_string) {
         Ok(count) => {
-            // Success! Save to cache and print.
+            // Happy Path: Update cache and display fresh data
             if let Err(e) = save_cache(count, &cache_path) {
                 eprintln!("Warning: Failed to save cache: {}", e);
             }
             print_success_json(count);
         }
         Err(check_err) => {
-            // Check failed. Try to read from cache.
+            // Check failed. Attempt recovery via cache.
             eprintln!("Update check failed: {}", check_err); // For debugging
             match read_cache(&cache_path) {
                 Ok(cache) => {
-                    // Cache read worked, print stale data.
                     print_stale_json(cache.count, &config);
                 }
                 Err(cache_err) => {
-                    // Total failure: check AND cache read failed.
+                    // Critical Failure
                     let combined_err = format!("Check Error: {}\nCache Error: {}", check_err, cache_err);
                     print_error_json(&config, &combined_err);
                 }
