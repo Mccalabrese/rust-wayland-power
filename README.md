@@ -86,11 +86,15 @@ cargo install --path .
 <p align="center">
   <img src="screenshots/clipboard.png" width="58%" alt="clipboard manager"/>
   </p>
+
 - **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
+
 <p align="center">
   <img src="screenshots/emoji.png" width="42%" alt="Emoji rofi app"/>
   </p>
+
 - **`radio-menu`**: A rofi based, extremely lightweight and low power consumption internet radio streaming tool that caches favorite stations for quick selection.
+
 <p align="center">
   <img src="screenshots/rofi-radio.png" width="85%" alt="rofi radio app"/>
   </p>
@@ -216,7 +220,11 @@ Ini, TOML:
 url=https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_GOOGLE_KEY_HERE
 ```
 
-Restart the service: sudo systemctl restart geoclue.service.
+Restart the service:
+
+```bash
+sudo systemctl restart geoclue.service
+```
 
 ### systemd-resolved (for DNS)
 
