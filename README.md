@@ -37,7 +37,7 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
   - **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
 - **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
 - **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
-    > ⚠️**WARNING!!!! My updated runs fwupdmgr as sudo with a -y flag.**
+    > ⚠️**WARNING!!!! My updater runs fwupdmgr as sudo with a -y flag.**
     > **Do not update with my updater** unless you are prepared to reboot or get sent into a bios update.
     > If you are not comfortable with this, find the "let bash_script = format!(..)" block of updater/src/main.rs (line 113) and change it to:
 >
@@ -47,7 +47,7 @@ let bash_script = format!("{} \n exit_code=$? \n echo -e '\\n\\n🏁 Update proc
 >
 - > Then rebuild:
 
-```rust
+```bash
 cargo install --path .
 ```
 
@@ -294,30 +294,30 @@ Symlink the "safe" configs:
 Bash
 
 ```bash
-ln -s ~/Arch-multi-session-dot-files/.tmux.conf ~/.tmux.conf
-ln -s ~/Arch-multi-session-dot-files/.profile ~/.profile
-ln -s ~/Arch-multi-session-dot-files/tlp.conf /etc/tlp.conf
+ln -s ~/rust-wayland-power/.tmux.conf ~/.tmux.conf
+ln -s ~/rust-wayland-power/.profile ~/.profile
+ln -s ~/rust-wayland-power/tlp.conf /etc/tlp.conf
 sudo systemctl enable tlp.service
-ln -s ~/Arch-multi-session-dot-files/.config/hypr ~/.config/hypr
-ln -s ~/Arch-multi-session-dot-files/.config/sway ~/.config/sway
-ln -s ~/Arch-multi-session-dot-files/.config/niri ~/.config/niri
-ln -s ~/Arch-multi-session-dot-files/.config/rofi ~/.config/rofi
-ln -s ~/Arch-multi-session-dot-files/.config/swaync ~/.config/swaync
-ln -s ~/Arch-multi-session-dot-files/.config/environment.d ~/.config/environment.d
-ln -s ~/Arch-multi-session-dot-files/.config/ghostty ~/.config/ghostty
-ln -s ~/Arch-multi-session-dot-files/.config/gtk-3.0 ~/.config/gtk-3.0
-ln -s ~/Arch-multi-session-dot-files/.config/gtk-4.0 ~/.config/gtk-4.0
-ln -s ~/Arch-multi-session-dot-files/.config/fastfetch ~/.config/fastfetch
-ln -s ~/Arch-multi-session-dot-files/.config/wlogout ~/.config/wlogout
-ln -s ~/Arch-multi-session-dot-files/.config/waybar ~/.config/waybar
+ln -s ~/rust-wayland-power/.config/hypr ~/.config/hypr
+ln -s ~/rust-wayland-power/.config/sway ~/.config/sway
+ln -s ~/rust-wayland-power/.config/niri ~/.config/niri
+ln -s ~/rust-wayland-power/.config/rofi ~/.config/rofi
+ln -s ~/rust-wayland-power/.config/swaync ~/.config/swaync
+ln -s ~/rust-wayland-power/.config/environment.d ~/.config/environment.d
+ln -s ~/rust-wayland-power/.config/ghostty ~/.config/ghostty
+ln -s ~/rust-wayland-power/.config/gtk-3.0 ~/.config/gtk-3.0
+ln -s ~/rust-wayland-power/.config/gtk-4.0 ~/.config/gtk-4.0
+ln -s ~/rust-wayland-power/.config/fastfetch ~/.config/fastfetch
+ln -s ~/rust-wayland-power/.config/wlogout ~/.config/wlogout
+ln -s ~/rust-wayland-power/.config/waybar ~/.config/waybar
 ```
 
 Our Rust scripts handle all secrets. You just need to copy the Waybar config templates.
 
 ```bash
-cp ~/Arch-multi-session-dot-files/.config/waybar/hyprConfig.jsonc.template ~/.config/waybar/hyprConfig.jsonc
-cp ~/Arch-multi-session-dot-files/.config/waybar/swayConfig.jsonc.template ~/.config/waybar/swayConfig.jsonc
-cp ~/Arch-multi-session-dot-files/.config/waybar/niriConfig.jsonc.template ~/.config/waybar/niriConfig.jsonc
+cp ~/rust-wayland-power/.config/waybar/hyprConfig.jsonc.template ~/.config/waybar/hyprConfig.jsonc
+cp ~/rust-wayland-power/.config/waybar/swayConfig.jsonc.template ~/.config/waybar/swayConfig.jsonc
+cp ~/rust-wayland-power/.config/waybar/niriConfig.jsonc.template ~/.config/waybar/niriConfig.jsonc
 ```
 
 ## 6. Final Startup
