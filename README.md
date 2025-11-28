@@ -1,4 +1,4 @@
-# My Arch Dotfiles
+# Arch Linux Dotfiles: Niri, Hyprland & Sway (Rust-Powered)
 
 <p align="left">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License"></a>
