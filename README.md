@@ -15,6 +15,7 @@
   <a href="#my-arch-dotfiles"><img src="https://img.shields.io/badge/Compositors-Niri%20%7C%20Hyprland%20%7C%20Sway-6A5ACD" alt="Compositors: Niri | Hyprland | Sway"></a>
   <a href="https://www.shellcheck.net/"><img src="https://img.shields.io/badge/shellcheck-recommended-blue" alt="ShellCheck recommended"></a>
 </p>
+
 [![Donate](https://img.shields.io/badge/Donate-Crypto-yellow.svg?style=for-the-badge&logo=bitcoin&logoColor=white)](#support-the-project)
 
 This is my obsessive setup for a minimal, multi-compositor Arch Linux environment. I run niri mostly but sometimes hyprland (docked on external monitor), and a custom sway session (iGPU-only, hyper optimized for battery). I also have gnome. Gnome is there when a full desktop is needed. Some things, such as annotating on students screens in zoom, just will not work on anything but a full desktop. My other configs do assume you have gnome and all its dependencies.
