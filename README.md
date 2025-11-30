@@ -38,10 +38,7 @@ The whole point is efficiency and performance. This setup idles at **4.8W** on m
 This repo includes a `bootstrap.sh` script that handles dependency checking, git cloning, and launches the Rust-based installation wizard.
 
 ```bash
-git clone [https://github.com/Mccalabrese/rust-wayland-power.git](https://github.com/Mccalabrese/rust-wayland-power.git)
-cd rust-wayland-power
-chmod +x bootstrap.sh
-./bootstrap.sh
+curl -O [https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh](https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh) && chmod +x bootstrap.sh && ./bootstrap.sh
 ```
 
 ### Manual Installation

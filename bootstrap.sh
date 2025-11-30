@@ -90,12 +90,13 @@ echo -e "${BLUE}Provisioning build toolchain...${NC}"
 sudo pacman -S --needed --noconfirm base-devel rustup git pkgconf wget curl ca-certificates
 
 # 6. Rust Environment Setup
-if ! command -v cargo &>/dev/null; then
-  echo -e "${GREEN}Initializing Rust toolchain...${NC}"
-  rustup init -y --default-toolchain stable
-else
-  echo "Rust toolchain already detected."
-fi
+# We cannot rely on 'command -v cargo' because pacman installs empty shims.
+# We must explicitly force rustup to install the stable toolchain.
+echo -e "${GREEN}Ensuring Rust stable toolchain is active...${NC}"
+rustup default stable
+
+# Ensure cargo binaries are in PATH for this session
+export PATH="$HOME/.cargo/bin:$PATH"
 
 # Ensure cargo binaries are in PATH for this session
 export PATH="$HOME/.cargo/bin:$PATH"
