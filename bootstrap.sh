@@ -60,23 +60,30 @@ echo -e "${BLUE}Synchronizing package databases...${NC}"
 sudo pacman -Syu --noconfirm archlinux-keyring pacman-mirrorlist
 
 # 4. Repository Discovery
-# Determines if we are running from inside the cloned repo or if we need to fetch it.
+# Determines if we are running from inside the cloned repo,
+# or if it exists in the current folder (Resume Mode),
+# or if we need to fetch it.
+
 if [ -f "sysScripts/install-wizard/Cargo.toml" ]; then
-  echo "✅ Repository integrity verified."
+  echo "✅ Running from inside repository."
+  REPO_ROOT="$PWD"
+elif [ -d "rust-wayland-power" ]; then
+  echo -e "${GREEN}📂 Found existing repository. Resuming installation...${NC}"
+  cd rust-wayland-power
   REPO_ROOT="$PWD"
 else
   if [ -d ".git" ]; then
-    # We are in a git repo, but maybe in a subdir. Assume PWD is usable.
+    # We are in a generic git repo (unlikely but possible)
     REPO_ROOT="$PWD"
   else
     echo -e "${GREEN}Cloning repository...${NC}"
-    # Install git only if missing (rare on Arch ISO, but possible on minimal installs)
+    # Install git only if missing
     if ! command -v git &>/dev/null; then
       sudo pacman -S --needed --noconfirm git
     fi
 
-    # Clone the branch/repo containing the installer logic
-    git clone https://github.com/mccalabrese/rust-wayland-power.git
+    # Clone the repo
+    git clone https://github.com/Mccalabrese/rust-wayland-power.git
     cd rust-wayland-power
     REPO_ROOT="$PWD"
   fi
