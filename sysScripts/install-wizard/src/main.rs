@@ -123,30 +123,60 @@ fn main() {
     println!("\n{}", "📦 Installing Common Packages...".blue().bold());
     install_pacman_packages(COMMON_PACKAGES);
 
-    // 3. Detect Hardware for gpu drivers
-    println!("\n{}", "🔍 Detecting GPU Hardware...".blue().bold());
-    let gpu = detect_gpu();
-    
-    match gpu {
-        GpuVendor::Nvidia => {
-            println!("   👉 NVIDIA Detected. Installing Drivers & Applying Power Fixes...");
-            install_pacman_packages(NVIDIA_PACKAGES);
-            //Applies specific kernel parameters and my udev rules found through trial and error
-            //Thanks nvidia for the headache
-            apply_nvidia_configs();
-        },
-        GpuVendor::Amd => {
-            println!("   👉 AMD Detected. Installing Vulkan/VAAPI Drivers...");
-            install_pacman_packages(AMD_PACKAGES);
-        },
-        GpuVendor::Intel => {
-             println!("   👉 Intel Detected. Drivers already installed.");
-        },
-        GpuVendor::Unknown => {
-             println!("   ⚠️  No dedicated NVIDIA/AMD GPU detected.");
+    // --- NEW: STATE CHECKPOINT LOGIC ---
+    let state_file = dirs::home_dir().unwrap().join(".cache/rust_installer_drivers_done");
+
+    if state_file.exists() {
+        println!("\n{}", "✅ Drivers already installed (Checkpoint found). Skipping to prevent crash.".green());
+    } else {
+        println!("\n{}", "🔍 Detecting GPU Hardware...".blue().bold());
+        let gpu = detect_gpu();
+
+        // RUN DRIVER INSTALL
+        match gpu {
+            GpuVendor::Nvidia => {
+                println!("   👉 NVIDIA Detected.");
+                install_pacman_packages(NVIDIA_PACKAGES);
+                apply_nvidia_configs();
+            },
+            GpuVendor::Amd => {
+                println!("   👉 AMD Detected.");
+                install_pacman_packages(AMD_PACKAGES);
+            },
+            GpuVendor::Intel => println!("   👉 Intel Detected (Drivers in common)."),
+            GpuVendor::Unknown => println!("   ⚠️  No dedicated GPU detected."),
+        }
+
+        // CHECK: Are we in a GUI?
+        let is_gui = std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("DISPLAY").is_ok();
+
+        if is_gui {
+            println!("\n{}", "⚠️  GRAPHICS DRIVERS INSTALLED".yellow().bold());
+            println!("We must reboot to load the new kernel modules safely.");
+            println!("If we continue now, your session will crash.");
+            
+            // Create the checkpoint file
+            if let Ok(mut file) = fs::File::create(&state_file) {
+                writeln!(file, "Drivers installed successfully.").unwrap();
+            }
+
+            println!("{}", "✅ Checkpoint saved. Please REBOOT and RUN THIS SCRIPT AGAIN to finish.".green().bold());
+            println!("The script will automatically detect this step is done next time.");
+            
+            // Optional: Ask to reboot now
+            let should_reboot = inquire::Confirm::new("Reboot now?")
+                .with_default(true)
+                .prompt()
+                .unwrap_or(true);
+
+            if should_reboot {
+                let _ = Command::new("sudo").arg("reboot").status();
+            }
+            
+            std::process::exit(0); // STOP HERE
         }
     }
-
+    // ------
     // 4. AUR
     // This will istall yay for a user to handle community packages (VS Code, Slack, etc)
     #[allow(clippy::const_is_empty)]
