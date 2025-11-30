@@ -61,7 +61,7 @@ const COMMON_PACKAGES: &[&str] = &[
     "wl-clipboard", "cliphist",
 
     // Audio
-    "pulseaudio", "pipewire", "pipewire-pulse", "pipewire-alsa", "pipewire-jack",
+    "pipewire", "pipewire-pulse", "pipewire-alsa", "pipewire-jack",
     "wireplumber", "pavucontrol", "sof-firmware",
 
     // File Mgmt
