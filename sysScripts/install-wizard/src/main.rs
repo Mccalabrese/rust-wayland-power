@@ -344,7 +344,6 @@ fn configure_system() {
     let logind_conf = "/etc/systemd/logind.conf";
     run_cmd("sudo", &["sed", "-i", "s/#KillUserProcesses=no/KillUserProcesses=yes/", logind_conf]);
     run_cmd("sudo", &["sed", "-i", "s/KillUserProcesses=no/KillUserProcesses=yes/", logind_conf]);
-    run_cmd("sudo", &["systemctl", "restart", "systemd-logind"]);
 
     println!("   🔧 Configuring Greetd...");
     let greetd_config = r#"
