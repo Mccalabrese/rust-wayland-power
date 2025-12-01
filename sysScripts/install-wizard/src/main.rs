@@ -188,6 +188,7 @@ fn main() {
     // 5. System Config & hardening
     println!("\n{}", "⚙️  Applying System Configurations...".blue().bold());
     configure_system(); //greetd, logind
+    enforce_session_order();
     optimize_pacman_config(); //cleans session list and prevents updates from overriding 
     
     // 6. Rust Apps
@@ -747,6 +748,33 @@ fn build_custom_apps() {
         }
     }
 }
+
+/// Renames session files to enforce a specific order in Greetd/Tuigreet.
+/// 1. Niri, 2. Sway, 3. Hyprland, 4. Gnome
+fn enforce_session_order() {
+    println!("   🔧 Enforcing Session Order (Niri -> Sway -> Hyprland)...");
+    
+    let updates = vec![
+        ("niri.desktop", "1. Niri"),
+        ("sway.desktop", "2. Sway (Battery)"),
+        ("hyprland.desktop", "3. Hyprland"),
+        ("gnome.desktop", "4. Gnome"),
+        ("gnome-wayland.desktop", "4. Gnome"), // Handle Arch variation
+    ];
+
+    for (file, new_name) in updates {
+        let path = format!("/usr/share/wayland-sessions/{}", file);
+        if Path::new(&path).exists() {
+            // Use sed to replace the Name= line
+            // s/^Name=.*/Name=1. Niri/
+            let sed_cmd = format!("s/^Name=.*/Name={}/", new_name);
+            let _ = Command::new("sudo")
+                .args(["sed", "-i", &sed_cmd, &path])
+                .status();
+        }
+    }
+}
+
 ///Walks through dotfiles in repo and symlinks them to home directory.
 fn link_dotfiles_and_copy_resources() {
     let home = dirs::home_dir().unwrap_or_else(|| {

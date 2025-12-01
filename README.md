@@ -18,9 +18,20 @@
 
 [![Donate](https://img.shields.io/badge/Donate-Crypto-yellow.svg?style=for-the-badge&logo=bitcoin&logoColor=white)](#support-the-project)
 
-This is my obsessive setup for a minimal, multi-compositor Arch Linux environment. I run **Niri** primarily, **Hyprland** when docked, and a custom **Sway** session (iGPU-only) hyper-optimized for battery life. Gnome is also there when a full desktop is needed (like teaching and annotating on students screens in zoom).
+## Screenshots
 
-The whole point is efficiency and performance. This setup idles at **4.8W** on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti, 4k display). I worked diligently on NVIDIA Optimus / Hybrid Graphics Fixes to achieve this.
+<p align="center">
+  <img src="screenshots/sway.png" width="48%" alt="Sway iGPU-only Idle"/>
+  <img src="screenshots/gnome.png" width="48%" alt="Gnome Desktop"/>
+  </p>
+<p align="center">
+  <img src="screenshots/niri.png" width="90%" alt="Niri Overview"/>
+  <img src="screenshots/hyprland.png" width="90%" alt="Hyprland Desktop"/>
+</p>
+
+This is my obsessive setup for a minimal, multi-compositor Arch Linux environment. I run **Niri** primarily, **Hyprland** when docked, and a custom **Sway** session (iGPU-only) hyper-optimized for battery life. Gnome is included for when a full desktop is needed (e.g., Zoom annotations).
+
+The whole point is efficiency and performance. This setup idles at **4.8W** on my ThinkPad X1 Extreme (i7-10850H, 64GB RAM, GTX 1650 Ti, 4k display).
 
 ---
 
@@ -29,79 +40,58 @@ The whole point is efficiency and performance. This setup idles at **4.8W** on m
 ### ⚠️ Beta Warning
 >
 > **The Rust Installer is currently in BETA.**
-> While I use this daily, it performs major system changes (package installation, config linking, systemd services).
->
-> **If you encounter errors:** Please open an issue with your **Hardware Details** (GPU, CPU, Laptop Model) and the full error log.
+> While I use this daily, it performs major system changes. If you encounter errors, please open an issue with your hardware details.
 
-### Automatic Install (Recommended)
+### 1. Preparation: Get Your API Keys
 
-This repo includes a `bootstrap.sh` script that handles dependency checking, git cloning, and launches the Rust-based installation wizard.
+The installer will ask for these. It is much easier to generate them before you start.
 
-**The installer will ask for 3 API keys, it may be easier to get them before running the script**
-**get your API keys at:**
-**<https://home.openweathermap.org/users/sign_up>**
-**finnhub.io/register**
-**console.cloud.google.com/apis/library/geocoding-backend.googleapis.com**
+1. **Weather (OpenWeatherMap):** [Sign Up Free](https://home.openweathermap.org/users/sign_up)
+2. **Stocks (Finnhub):** [Sign Up Free](https://finnhub.io/register)
+3. **Geolocation (Google Cloud):** *Required for automatic location detection.*
 
-**The weather module relies on Geoclue, which needs the Google Maps Geolocation API to find your laptop (since most laptops don't have GPS).**
+<details>
+<summary><strong>🌍 Click here for Google Geolocation Instructions (Required)</strong></summary>
 
-**You must enable Billing for this API to work. Don't panic: Google gives $200/month free credit, which is millions of requests. You will never pay a cent for personal use, but you must have a card on file.**
+The weather module uses Geoclue, which requires the **Google Maps Geolocation API** to find your laptop (since most laptops lack GPS).
 
-    Go to Google Cloud Console: console.cloud.google.com
+**You must enable Billing for this API.**
+*Don't panic: Google gives $200/month free credit. You will likely never pay a cent, but a card is required.*
 
-    Create a Project: Name it "Arch-Weather" or similar.
+1. Go to [Google Cloud Console](https://console.cloud.google.com).
+2. **Create a Project:** Name it "Arch-Weather".
+3. **Enable the API:** Search for **"Geolocation API"** (Not Geocoding) and click **Enable**.
+4. **Create Credentials:** Go to **APIs & Services > Credentials** → **Create Credentials** → **API Key**.
+5. **Enable Billing:** Go to **Billing** in the sidebar and link a card.
+6. **Copy the Key:** Paste this into the installer when prompted.
 
-    Enable the API:
-
-        Search for "Geolocation API" (Not Geocoding, specifically Geolocation).
-
-        Click Enable.
-
-    Create Credentials:
-
-        Go to APIs & Services > Credentials.
-
-        Click Create Credentials > API Key.
-
-        Recommended: Click "Restrict Key" and lock it to "Geolocation API" only for security.
-
-    Enable Billing:
-
-        Go to Billing in the sidebar.
-
-        Link a credit card. (Again, you won't be charged unless you make >100,000 requests/month).
-
-    Copy the Key: Paste this into the Installer when prompted.
-
-**If you do not have drivers for your graphics card yet (fresh arch install) the updater will install them and ask you to reboot, instructions are given in the installer window but allow the reboot then rerun the installer with the same curl command after your computer turns back on and it will continue where it left off.**
+</details>
+```
+### 2. Run the Installer
+This one-liner downloads the bootstrap script, which installs Git/Rust, clones this repo, and launches the configuration wizard.
 
 ```bash
-cd ~ && curl -O https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
+cd ~ && curl -O [https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh](https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh) && chmod +x bootstrap.sh && ./bootstrap.sh
 ```
 
-### 🖥️ Display Scaling (If everything looks huge)
+*Note: If the installer detects missing GPU drivers (e.g., fresh Arch install), it will install them and ask you to reboot. Simply run this command again after rebooting to resume exactly where you left off.*
 
-This config is optimized for high-resolution (4k) screens with `scale 2.0`.
-If you are on a standard 1080p screen, everything will look zoomed in.
+### 🛠️ Post-Install Fixes
 
-**To Fix:**
+**Display Scaling (Everything looks huge/tiny?)**
+This config is optimized for 4k Screens (scale 2.0). If you are on a 1080p Screen, everything will look zoomed in.
+To Fix:
 
-1. **Niri:** Edit `~/.config/niri/config.kdl`
-    * Find `output "eDP-1"`
-    * Change `scale 2.0` to `scale 1.0`
-2. **Sway:** Edit `~/.config/sway/config`
-    * Find `output * scale 2`
-    * Change it to `scale 1`
+    Niri: Edit ~/.config/niri/config.kdl -> Find output "eDP-1" -> Change scale 2.0 to 1.0.
 
-### Manual Installation
+    Sway: Edit ~/.config/sway/config -> Find output * scale 2 -> Change to scale 1.
 
-If you prefer to understand every change being made to your system, or if the installer fails, please consult the manual guide 👉 [docs/MANUAL_INSTALL.md](docs/MANUAL_INSTALL.md).
+## 📂 Documentation
 
-## ⚡ Power Management (NVIDIA Optimus)
+* **[Manual Installation Guide](docs/MANUAL_INSTALL.md):** Prefer to run commands yourself? Read this.
+* **[Power Management (NVIDIA)](docs/POWER_MANAGEMENT.md):** How I achieved sub-5W idle on a gaming laptop.
 
-Achieving sub-5W idle on a workstation requires specific BIOS, Kernel, and Udev Configurations 👉 [docs/POWER_MANAGEMENT.md](docs/POWER_MANAGEMENT.md).
-
-**Credit to JaKooLit for the original inspiration. I have since heavily modified and optimized it for my needs. Many theme options and examples are available on <https://github.com/JaKooLit/Hyprland-Dots>**
+---
 
 ## My Custom Rust Binaries
 
