@@ -718,6 +718,18 @@ default = []
 [[kb_launcher.sheet]]
 name = "Niri"
 file = "~/.config/niri/keybinds_niri.txt"
+
+[[kb_launcher.sheet]]
+name = "Sway"
+file = "~/.config/sway/keybinds_sway.txt"
+
+[[kb_launcher.sheet]]
+name = "Hyprland"
+file = "~/.config/hypr/keybinds_hypr.txt"
+
+[[kb_launcher.sheet]]
+name = "Neovim"
+file = "~/.config/nvim/keybinds_nvim.txt"
 "#, 
     term_choice, 
     weather_api, 
@@ -801,7 +813,17 @@ fn link_dotfiles_and_copy_resources() {
         let dest_path = home.join(dest);
         create_symlink(&src_path, &dest_path);
     }
-    
+    // --- SPECIAL HANDLING FOR NEOVIM ---
+    // We only install this if the user has NO config, to avoid angering Vim power users.
+    let nvim_dest = home.join(".config/nvim");
+    if nvim_dest.exists() {
+        println!("   ℹ️  Neovim config found. Skipping to preserve your setup. If you would like my setup just copy ~/rust-wayland-power/.config/nvim to ~/.config/nvim");
+        println!("      (Note: The 'Neovim' cheat sheet in kb-launcher may not work)");
+    } else {
+        println!("   ✨ Installing LazyVim Config...");
+        let nvim_src = repo_root.join(".config/nvim");
+        create_symlink(&nvim_src, &nvim_dest);
+    }
     // Link TLP
     let tlp_src = repo_root.join("tlp.conf");
     let _ = Command::new("sudo").args(["ln", "-sf", tlp_src.to_str().unwrap(), "/etc/tlp.conf"]).status();

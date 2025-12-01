@@ -77,6 +77,21 @@ cd ~ && curl -O https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power
 
 *Note: If the installer detects missing GPU drivers (e.g., fresh Arch install), it will install them and ask you to reboot. Simply run this command again after rebooting to resume exactly where you left off.*
 
+### 🛡️ Safety & Backups
+
+The installer is designed to be **non-destructive**.
+
+  > **Existing Configs:** If a config file (like .zshrc or .config/waybar) already exists, the installer will rename it to filename.backup before linking the new one. nothing is deleted.
+
+  > **Neovim:** To respect your personal setup, the installer will NOT touch your ~/.config/nvim if it already exists.
+
+*Want my Neovim setup? If you have an existing nvim config but prefer to switch to my LazyVim setup, simply move your old folder and link mine manually:*
+
+```bash
+mv ~/.config/nvim ~/.config/nvim.old
+ln -s ~/rust-wayland-power/.config/nvim ~/.config/nvim
+```
+
 ### 🛠️ Post-Install Fixes
 
 **Display Scaling (Everything looks huge/tiny?)**
