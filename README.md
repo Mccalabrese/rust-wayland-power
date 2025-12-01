@@ -37,6 +37,16 @@ The whole point is efficiency and performance. This setup idles at **4.8W** on m
 
 This repo includes a `bootstrap.sh` script that handles dependency checking, git cloning, and launches the Rust-based installation wizard.
 
+**The installer will ask for 3 API keys, it may be easier to get them before running the script**
+**get your API keys at:**
+**<https://home.openweathermap.org/users/sign_up>**
+**finnhub.io/register**
+**console.cloud.google.com/apis/library/geocoding-backend.googleapis.com**
+
+**Google will require you to have an account with billing information, however the usage of the weather module is orders of magnitude below the limit where they will ever charge you. I am currently looking into open source alternatives, but for now google works the best and is free, but does require billing info.**
+
+**If you do not have drivers for your graphics card yet (fresh arch install) the updater will install them and ask you to reboot, instructions are given in the installer window but allow the reboot then rerun the installer with the same curl command after your computer turns back on and it will continue where it left off.**
+
 ```bash
 cd ~ && curl -O https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
 ```

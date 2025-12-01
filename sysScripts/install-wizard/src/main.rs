@@ -340,6 +340,21 @@ fn configure_system() {
         Ok(_) => println!("✅ DNS Configured"),
         Err(e) => eprintln!("❌ Failed to configure DNS: {}", e),
     }
+    println!("   🔧 Configuring Session Environment (PATH)...");
+    let env_dir = dirs::home_dir().unwrap().join(".config/environment.d");
+    let env_file = env_dir.join("99-cargo-path.conf");
+
+    // Create dir if missing
+    if let Ok(_) = fs::create_dir_all(&env_dir) {
+        // We write the variable assignment directly
+        let content = "PATH=$HOME/.cargo/bin:$PATH\n";
+        
+        if let Err(e) = fs::write(&env_file, content) {
+            eprintln!("   ⚠️ Failed to write environment.d config: {}", e);
+        } else {
+            println!("   ✅ Global PATH configured for Wayland.");
+        }
+    }
     println!("   🔧 Configuring Logind...");
     let logind_conf = "/etc/systemd/logind.conf";
     run_cmd("sudo", &["sed", "-i", "s/#KillUserProcesses=no/KillUserProcesses=yes/", logind_conf]);
@@ -524,11 +539,11 @@ fn setup_secrets_and_geoclue() {
 
     println!("   🧙 We need to generate your central config.toml and configure Location Services.");
     
-    let weather_api = Text::new("Enter OpenWeatherMap API Key:").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
-    let finnhub_api = Text::new("Enter Finnhub.io API Key:").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
+    let weather_api = Text::new("Enter OpenWeatherMap API Key (get one by making a free account at https://home.openweathermap.org/users/sign_up):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
+    let finnhub_api = Text::new("Enter Finnhub.io API Key (get one by making a free account at finnhub.io/register):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
     
     // SECURE FIX: Validation logic for keys to prevent injection
-    let google_geo_api = Text::new("Enter Google Geolocation API Key (for Geoclue):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
+    let google_geo_api = Text::new("Enter Google Geolocation API Key for Geoclue(get one at console.cloud.google.com/apis/library/geocoding-backend.googleapis.com):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
     
     // Simple validation: alphanumeric + underscores/hyphens only
     let is_valid_key = |k: &str| k.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-');
@@ -700,7 +715,7 @@ fn link_dotfiles_and_copy_resources() {
     let repo_root = current_dir.parent().unwrap().parent().unwrap();
 
     let links = vec![
-        (".tmux.conf", ".tmux.conf"), (".profile", ".profile"),
+        (".tmux.conf", ".tmux.conf"), (".profile", ".profile"), (".zshrc", ".zshrc"),
         (".config/waybar", ".config/waybar"), (".config/sway", ".config/sway"),
         (".config/hypr", ".config/hypr"), (".config/niri", ".config/niri"),
         (".config/rofi", ".config/rofi"), (".config/swaync", ".config/swaync"),
