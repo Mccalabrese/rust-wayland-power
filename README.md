@@ -66,8 +66,9 @@ The weather module uses Geoclue, which requires the **Google Maps Geolocation AP
 6. **Copy the Key:** Paste this into the installer when prompted.
 
 </details>
-```
+
 ### 2. Run the Installer
+
 This one-liner downloads the bootstrap script, which installs Git/Rust, clones this repo, and launches the configuration wizard.
 
 ```bash
@@ -178,17 +179,6 @@ cargo install --path .
   <img src="screenshots/waybar-finance-tooltip.png" width="32%" alt="waybar finance tooltip"/>
   <img src="screenshots/waybar-finance-tui.png" width="65%" alt="finance TUI" />
   </p>
-
-## Screenshots
-
-<p align="center">
-  <img src="screenshots/sway.png" width="48%" alt="Sway iGPU-only Idle"/>
-  <img src="screenshots/gnome.png" width="48%" alt="Gnome Desktop"/>
-  </p>
-<p align="center">
-  <img src="screenshots/niri.png" width="90%" alt="Niri Overview"/>
-  <img src="screenshots/hyprland.png" width="90%" alt="Hyprland Desktop"/>
-</p>
 
 ### The Philosophy: Why Rust?
 
