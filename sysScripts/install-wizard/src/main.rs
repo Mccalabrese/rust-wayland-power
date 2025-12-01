@@ -81,7 +81,7 @@ const COMMON_PACKAGES: &[&str] = &[
     "zsh", "starship", "ghostty", "tmux", "fzf", "ripgrep", "bat", "btop", "fastfetch", "neovim",
     "networkmanager", "network-manager-applet", "cloudflared",
     "firefox", "discord", "tigervnc", "mpv", "gparted", "simple-scan", "gnome-calculator",
-    "cups", "system-config-printer", "cups-pdf"
+    "cups", "system-config-printer", "cups-pdf", "zsh-autosuggestions", "zsh-syntax-highlighting"
 ];
 
 // Hardware Specific: NVIDIA
@@ -332,14 +332,45 @@ fn configure_system() {
     run_cmd("sudo", &["systemctl", "enable", "bluetooth.service"]);
     run_cmd("sudo", &["systemctl", "enable", "bolt.service"]);
 
-    println!("   🔧 Configuring DNS...");
-    run_cmd("sudo", &["systemctl", "disable", "--now", "systemd-resolved"]);
-    run_cmd("sudo", &["rm", "-f", "/etc/resolv.conf"]);
-    run_cmd("sudo", &["touch", "/etc/resolv.conf"]);
-    match append_to_root_file("/etc/resolv.conf", "nameserver 1.1.1.1\n") {
-        Ok(_) => println!("✅ DNS Configured"),
-        Err(e) => eprintln!("❌ Failed to configure DNS: {}", e),
+    // --- CLOUDFLARED CONFIGURATION ---
+    println!("   🔧 Configuring Cloudflared (DNS Proxy)...");
+    
+    // 1. Write the Config File
+    let cf_config = "proxy-dns: true\nproxy-dns-upstream:\n  - https://1.1.1.1/dns-query\n  - https://1.0.0.1/dns-query\nproxy-dns-port: 53\nproxy-dns-address: 127.0.0.1\n";
+    let _ = Command::new("sudo").args(["mkdir", "-p", "/etc/cloudflared"]).status();
+    
+    let local_cf_conf = "./config.yml";
+    if fs::write(local_cf_conf, cf_config).is_ok() {
+        let _ = Command::new("sudo").args(["install", "-m", "644", local_cf_conf, "/etc/cloudflared/config.yml"]).status();
+        let _ = fs::remove_file(local_cf_conf);
     }
+
+    // 2. Create the Service File
+    let cf_service_content = r#"[Unit]
+Description=Cloudflared DNS over HTTPS Proxy
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/cloudflared --config /etc/cloudflared/config.yml
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+    let local_cf_svc = "./cloudflared-dns.service";
+    if fs::write(local_cf_svc, cf_service_content).is_ok() {
+        let _ = Command::new("sudo").args(["install", "-m", "644", local_cf_svc, "/etc/systemd/system/cloudflared-dns.service"]).status();
+        let _ = fs::remove_file(local_cf_svc);
+    }
+
+    // 3. Enable it
+    run_cmd("sudo", &["systemctl", "daemon-reload"]);
+    // Disable the default 'cloudflared' service if installed by pacman to avoid conflicts
+    let _ = Command::new("sudo").args(["systemctl", "disable", "--now", "cloudflared"]).status();
+    // Enable our custom service
+    run_cmd("sudo", &["systemctl", "enable", "cloudflared-dns.service"]);
     println!("   🔧 Configuring Session Environment (PATH)...");
     let env_dir = dirs::home_dir().unwrap().join(".config/environment.d");
     let env_file = env_dir.join("99-cargo-path.conf");

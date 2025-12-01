@@ -235,7 +235,13 @@ pub async fn run_waybar_mode(client: &reqwest::Client) -> Result<()> {
     let api_key = match &config.api_key {
         Some(k) => k,
         None => {
-            eprintln!("Error: API key not found in config.json");
+            // OUTPUT A CLICKABLE JSON SO USER KNOWS TO SETUP
+            let output = WaybarOutput {
+                text: "⚠️ Finance Setup".to_string(),
+                tooltip: "Click to launch setup and enter API Key".to_string(),
+                class: "warning".to_string(),
+            };
+            println!("{}", serde_json::to_string(&output)?);
             return Ok(());
         }
     };
