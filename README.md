@@ -79,6 +79,20 @@ This repo includes a `bootstrap.sh` script that handles dependency checking, git
 cd ~ && curl -O https://raw.githubusercontent.com/Mccalabrese/rust-wayland-power/main/bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
 ```
 
+### 🖥️ Display Scaling (If everything looks huge)
+
+This config is optimized for high-resolution (4k) screens with `scale 2.0`.
+If you are on a standard 1080p screen, everything will look zoomed in.
+
+**To Fix:**
+
+1. **Niri:** Edit `~/.config/niri/config.kdl`
+    * Find `output "eDP-1"`
+    * Change `scale 2.0` to `scale 1.0`
+2. **Sway:** Edit `~/.config/sway/config`
+    * Find `output * scale 2`
+    * Change it to `scale 1`
+
 ### Manual Installation
 
 If you prefer to understand every change being made to your system, or if the installer fails, please consult the manual guide 👉 [docs/MANUAL_INSTALL.md](docs/MANUAL_INSTALL.md).
@@ -93,40 +107,40 @@ Achieving sub-5W idle on a workstation requires specific BIOS, Kernel, and Udev 
 
 All the helper scripts in this repo have been rewritten in Rust for maximum performance and stability. **These tools can be used independently of the rest of my dotfiles.** Here is what each one does:
 
-- **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
-- **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
+* **`waybar-switcher`**: A small utility that runs at login to detect which session you're in (Niri, Hyprland, or Sway) and automatically loads the correct Waybar config.
+* **`waybar-weather`**: The weather module in Waybar. It's a custom-built app that securely gets your API key from the central config, finds your location, and fetches the weather.
 
 <p align="center">
   <img src="screenshots/waybar-weather.png" width="28%" alt="Waybar weather module"/>
   </p>
 
-- **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
-- **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
-- **`cloudflare-toggle`**:
-  - **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare DNS over HTTPS.
-  - **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare DNS over HTTPS on or off using `pkexec`.
+* **`sway-workspace`**: A simple helper that reliably gets the current workspace name for the Waybar module in Sway.
+* **`update-check`**: The update icon in Waybar. It safely checks for new `pacman` and `yay` updates and shows the count. It's network-aware and displays a "stale" count if you're offline.
+* **`cloudflare-toggle`**:
+  * **`cf-status`**: The "CF" icon in Waybar that shows if you are using Cloudflare DNS over HTTPS.
+  * **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare DNS over HTTPS on or off using `pkexec`.
 
 <p align="center">
   <img src="screenshots/cf-toggle.png" width="60%" alt="Cloudflare toggle module"/>
   </p>
 
-- **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
-  - **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
-  - **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
-  - **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
+* **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
+  * **`wp-daemon`**: A silent, background daemon that watches your wallpaper folder for changes and auto-generates thumbnails.
+  * **`wp-select`**: The Rofi-based pop-up menu (`Mod+W`) that lets you see your wallpaper thumbnails and choose a new one.
+  * **`wp-apply`**: The back-end tool that actually sets the wallpaper, using the correct tool for your session (`swaybg` or `swww`).
 
 <p align="center">
   <img src="screenshots/wallpaper-manager.png" width="70%" alt="Wallpaper rofi app"/>
   </p>
 
-- **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
+* **`kb-launcher`**: The keybind cheat sheet (`Mod+Shift+P`). It's a pop-up menu that reads your `.txt` files to show you the keybinds for Niri, Sway, Hyprland, or Neovim.
 
 <p align="center">
   <img src="screenshots/keyhints.png" width="32%" alt="keyhint sheet"/>
   <img src="screenshots/keyhints-selector.png" width="60%" alt="Keyhint session selector (rofi)" />
   </p>
 
-- **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
+* **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
     > ⚠️**WARNING!!!! My updater runs fwupdmgr as sudo with a -y flag.**
     > **Do not update with my updater** unless you are prepared to reboot or get sent into a bios update.
     > If you are not comfortable with this, find the "let bash_script = format!(..)" block of updater/src/main.rs (line 113) and change it to:
@@ -135,40 +149,40 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 let bash_script = format!("{} \n exit_code=$? \n echo -e '\\n\\n🏁 Update process finished. This window will close in 5 seconds.' \n sleep 5 \n exit $exit_code", update_cmd_str);
 ```
 >
-- > Then rebuild:
+* > Then rebuild:
 
 ```bash
 cargo install --path .
 ```
 
-- **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
+* **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
 
 <p align="center">
   <img src="screenshots/power-menu.png" width="60%" alt="Power Menu formatting"/>
   </p>
 
-- **`rfkill-manager`**:
-  - `--status`: The airplane icon in your SwayNC, showing if "Airplane Mode" is on or off.
-  - `--toggle`: The `on-click` action (in your `swaync` panel or on a keybind) that toggles all wireless (Wi-Fi & Bluetooth) on or off.
-- **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
+* **`rfkill-manager`**:
+  * `--status`: The airplane icon in your SwayNC, showing if "Airplane Mode" is on or off.
+  * `--toggle`: The `on-click` action (in your `swaync` panel or on a keybind) that toggles all wireless (Wi-Fi & Bluetooth) on or off.
+* **`clip-manager`**: The clipboard history manager (`Mod+Alt+V`). It uses `cliphist` as a backend and pipes your selection to Rofi, allowing you to copy, delete, or wipe your clipboard history.
 
 <p align="center">
   <img src="screenshots/clipboard.png" width="58%" alt="clipboard manager"/>
   </p>
 
-- **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
+* **`emoji-picker`**: The emoji selector (`Mod+Alt+E`). It uses a built-in Rust emoji database to give you a fast, searchable Rofi menu for copying any emoji.
 
 <p align="center">
   <img src="screenshots/emoji.png" width="42%" alt="Emoji rofi app"/>
   </p>
 
-- **`radio-menu`**: A rofi based, extremely lightweight and low power consumption internet radio streaming tool that caches favorite stations for quick selection.
+* **`radio-menu`**: A rofi based, extremely lightweight and low power consumption internet radio streaming tool that caches favorite stations for quick selection.
 
 <p align="center">
   <img src="screenshots/rofi-radio.png" width="85%" alt="rofi radio app"/>
   </p>
 
-- **`waybar-finance`**: A lightweight TUI market watch list application with charts, and security details. Designed to be run in a terminal multiplexer like tmux or ghostty. This will request that you create and enter a Finnhub.io API key on first run. The app will display quoting of your watchlist items as a tooltip on hover over its icon in Waybar.
+* **`waybar-finance`**: A lightweight TUI market watch list application with charts, and security details. Designed to be run in a terminal multiplexer like tmux or ghostty. This will request that you create and enter a Finnhub.io API key on first run. The app will display quoting of your watchlist items as a tooltip on hover over its icon in Waybar.
 
 <p align="center">
   <img src="screenshots/waybar-finance-tooltip.png" width="32%" alt="waybar finance tooltip"/>
@@ -200,5 +214,5 @@ Why not shell scripts? My old scripts were a disaster zone of pgrep, jq, sed, aw
 
 If these dotfiles saved you time or improved your battery life, consider buying me a coffee (or a textbook). I'm a computer engineering student, and every bit helps!
 
-- **BTC:** `bc1qvanmtuwn3jd5wurlj3wc9j7ddcwcwwzhjj6ndx`
-- **ETH:** `0x1dC04e98A9762fdb86F09437813Ce73D9112dF96`
+* **BTC:** `bc1qvanmtuwn3jd5wurlj3wc9j7ddcwcwwzhjj6ndx`
+* **ETH:** `0x1dC04e98A9762fdb86F09437813Ce73D9112dF96`

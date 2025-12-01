@@ -65,14 +65,14 @@ sudo pacman -S --needed --noconfirm \
   xwayland-satellite qt5-wayland qt6-wayland polkit-gnome geoclue \
   xdg-desktop-portal-gnome xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
   wl-clipboard cliphist \
-  pulseaudio pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber pavucontrol sof-firmware \
+  pipewire pipewire-pulse pipewire-alsa pipewire-jack wireplumber pavucontrol sof-firmware \
   thunar thunar-volman tumbler gvfs gvfs-mtp gvfs-smb gvfs-gphoto2 file-roller gnome-disk-utility \
   ufw timeshift seahorse gnome-keyring waybar wofi rofi swaync swww swaybg grim slurp mako \
   papirus-icon-theme gnome-themes-extra adwaita-icon-theme \
   ttf-jetbrains-mono-nerd ttf-fira-code ttf-jetbrains-mono noto-fonts noto-fonts-emoji otf-font-awesome \
   zsh starship ghostty tmux fzf ripgrep bat btop fastfetch neovim \
   networkmanager network-manager-applet cloudflared firefox discord tigervnc mpv gparted simple-scan gnome-calculator \
-  cups system-config-printer cups-pdf
+  cups system-config-printer cups-pdf zsh-autosuggestions zsh-syntax-highlighting
 ```
 
 ## 3. GPU Detection and Drivers
@@ -120,9 +120,40 @@ yay -S --needed --noconfirm \
 ### 5.1 Disable systemd-resolved and manage resolv.conf directly
 
 ```bash
+sudo mkdir -p /etc/NetworkManager/conf.d
+echo -e "[main]\ndns=none" | sudo tee /etc/NetworkManager/conf.d/no-dns.conf
 sudo systemctl disable --now systemd-resolved
 sudo rm -f /etc/resolv.conf
 echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf
+sudo mkdir -p /etc/cloudflared
+echo -e "proxy-dns: true\nproxy-dns-upstream:\n  - [https://1.1.1.1/dns-query](https://1.1.1.1/dns-query)\n  - [https://1.0.0.1/dns-query](https://1.0.0.1/dns-query)\nproxy-dns-port: 53\nproxy-dns-address: 127.0.0.1" | sudo tee /etc/cloudflared/config.yml
+```
+
+Service File (Must be named cloudflared-dns for the toggle app)
+
+```bash
+sudo tee /etc/systemd/system/cloudflared-dns.service >/dev/null <<'EOF'
+[Unit]
+Description=Cloudflared DNS over HTTPS Proxy
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/cloudflared --config /etc/cloudflared/config.yml
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+```
+
+Enable
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl disable --now cloudflared
+sudo systemctl enable cloudflared-dns.service
 ```
 
 ### 5.2 Configure greetd with tuigreet
@@ -142,7 +173,6 @@ EOF
 
 ```bash
 sudo sed -i 's/^#\?KillUserProcesses=.*/KillUserProcesses=yes/' /etc/systemd/logind.conf
-sudo systemctl restart systemd-logind.service
 ```
 
 ### 5.4 Optimize pacman: trim session files via NoExtract
@@ -187,8 +217,14 @@ nano ~/.config/rust-dotfiles/config.toml
 For geoclue (Google Geolocation):
 
 ```bash
-sudo sed -i 's#^\[wifi-scan\].*#[wifi-scan]\nurl=https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_GOOGLE_KEY_HERE#' /etc/geoclue/geoclue.conf
-sudo systemctl restart geoclue.service
+# Enable wifi source
+sudo sed -i 's/^.*enable=true/enable=true/' /etc/geoclue/geoclue.conf
+
+# Inject Key (Replace placeholder line)
+KEY="YOUR_GOOGLE_KEY_HERE"
+sudo sed -i "s|^.*googleapis.com.*|url=[https://www.googleapis.com/geolocation/v1/geolocate?key=$KEY](https://www.googleapis.com/geolocation/v1/geolocate?key=$KEY)|" /etc/geoclue/geoclue.conf
+
+sudo systemctl restart geoclue
 ```
 
 ## 8. Waybar Config Templates
@@ -223,6 +259,7 @@ ln -sf "$PWD/.config/gtk-4.0" ~/.config/gtk-4.0
 ln -sf "$PWD/.config/fastfetch" ~/.config/fastfetch
 ln -sf "$PWD/.config/wlogout" ~/.config/wlogout
 ln -sf "$PWD/.config/waybar" ~/.config/waybar
+ln -sf "$PWD/.zshrc" ~/.zshrc
 ```
 
 Copy wallpapers if applicable (the installer handles this):
@@ -240,6 +277,8 @@ Ensure cargo in PATH for display managers and services:
 mkdir -p ~/.config/environment.d
 echo 'PATH=$HOME/.cargo/bin:$HOME/.pub-cache/bin:$PATH' > ~/.config/environment.d/99-custom-path.conf
 ```
+
+*Note: The installer also ensures `export PATH="$HOME/.cargo/bin:$PATH"` is present in `~/.profile` to allow Greetd/Sway to find your apps.*
 
 ## 11. NVIDIA Power Management (If NVIDIA Present)
 
