@@ -447,15 +447,23 @@ fn optimize_pacman_config() {
     let content = fs::read_to_string(pacman_conf).unwrap_or_default();
     
     if !content.contains("NoExtract = usr/share/wayland-sessions/niri.desktop") {
-        let no_extract_block = r#"
-# Clean up greetd session list (User Preferences)
-NoExtract = usr/share/wayland-sessions/niri.desktop usr/share/wayland-sessions/hyprland.desktop usr/share/wayland-sessions/sway.desktop usr/share/wayland-sessions/gnome.desktop usr/share/wayland-sessions/gnome-classic.desktop usr/share/wayland-sessions/gnome-classic-wayland.desktop usr/share/wayland-sessions/hyprland-uwsm.desktop usr/share/wayland-sessions/gnome-wayland.desktop
-"#;
-        match append_to_root_file(pacman_conf, no_extract_block) {
-            Ok(_) => println!("    ✅ Added NoExtract rules to pacman.conf"),
-            Err(e) => eprintln!("    ❌ Failed to update pacman.conf: {}", e),
+        println!("   👉 Injecting NoExtract rules into [options]...");
+        
+        let no_extract_line = "NoExtract = usr/share/wayland-sessions/niri.desktop usr/share/wayland-sessions/hyprland.desktop usr/share/wayland-sessions/sway.desktop usr/share/wayland-sessions/gnome.desktop usr/share/wayland-sessions/gnome-classic.desktop usr/share/wayland-sessions/gnome-classic-wayland.desktop usr/share/wayland-sessions/hyprland-uwsm.desktop usr/share/wayland-sessions/gnome-wayland.desktop";
+        
+        // Use sed to append ('a') after the line matching '[options]'
+        let sed_cmd = format!("/^\\[options\\]/a {}", no_extract_line);
+        
+        let status = Command::new("sudo")
+            .args(["sed", "-i", &sed_cmd, pacman_conf])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => println!("   ✅ Added NoExtract rules to pacman.conf"),
+            _ => eprintln!("   ❌ Failed to patch pacman.conf"),
         }
-        println!("   ✅ Added NoExtract rules to pacman.conf");
+    } else {
+        println!("   ℹ️  NoExtract rules already present.");
     }
 }
 /// Applies specific fixes for NVIDIA on Wayland.

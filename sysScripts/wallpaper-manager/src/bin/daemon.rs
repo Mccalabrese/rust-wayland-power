@@ -162,10 +162,19 @@ fn main() -> Result<()> {
     // Event Loop
     for res in rx {
         match res {
-            Ok(_) => {
-                println!("Change detected. Refreshing cache...");
-                if let Err(e) = scan_and_update_cache(&wall_dir, &cache_file) {
-                    eprintln!("Error updating cache: {}", e);
+            Ok(event) => {
+                // FILTER: Ignore access events, metadata changes, or other noise.
+                // We only care if a file was created, modified (content), or removed.
+                use notify::EventKind;
+                match event.kind {
+                    EventKind::Create(_) | EventKind::Modify(notify::event::ModifyKind::Data(_)) | EventKind::Remove(_) => {
+                        println!("Relevant change detected ({:?}). Refreshing cache...", event.kind);
+                        // Debounce? (Optional optimization, but this filter usually fixes the loop)
+                        if let Err(e) = scan_and_update_cache(&wall_dir, &cache_file) {
+                            eprintln!("Error updating cache: {}", e);
+                        }
+                    },
+                    _ => {} // Ignore everything else (Access, Chmod, etc.)
                 }
             },
             Err(e) => eprintln!("Watch error {:?}", e),
