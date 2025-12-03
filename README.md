@@ -65,6 +65,8 @@ The weather module uses Geoclue, which requires the **Google Maps Geolocation AP
 5. **Enable Billing:** Go to **Billing** in the sidebar and link a card.
 6. **Copy the Key:** Paste this into the installer when prompted.
 
+Note: **When setting up Google Billing, you may see a temporary authorization hold ($1-$10) to verify your card. This is not a charge and will disappear in a few days. If you cannot provide a card, you can manually edit /etc/geoclue/geoclue.conf to use [ip] location instead of [wifi].**
+
 </details>
 
 ### 2. Run the Installer
