@@ -91,7 +91,7 @@ const NVIDIA_PACKAGES: &[&str] = &[
 
 // Hardware Specific: AMD
 const AMD_PACKAGES: &[&str] = &[
-    "vulkan-radeon", "libva-mesa-driver", "mesa-vdpau", "xf86-video-amdgpu"
+    "vulkan-radeon", "libva-mesa-driver", "xf86-video-amdgpu"
 ];
 
 // AUR
