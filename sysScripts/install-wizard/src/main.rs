@@ -118,7 +118,15 @@ fn main() {
         eprintln!("{}", "❌ Sudo privileges are required.".red());
         std::process::exit(1);
     }
-
+    // 1.5 Conflict Resolution: Remove jack2 so pipewire-jack can install
+    // We use -Rdd to remove it even if other packages depend on it, 
+    // because we are about to install the replacement immediately.
+    println!("\n{}", "⚔️  Resolving Audio Conflicts (Removing jack2)...".yellow());
+    let _ = Command::new("sudo")
+        .args(["pacman", "-Rdd", "--noconfirm", "jack2"])
+        .stdout(Stdio::null()) // Silence output (it might fail if not installed, that's fine)
+        .stderr(Stdio::null())
+        .status();
     // 2. Install Common Packages (Pacman)
     println!("\n{}", "📦 Installing Common Packages...".blue().bold());
     install_pacman_packages(COMMON_PACKAGES);
