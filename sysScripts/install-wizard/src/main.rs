@@ -380,6 +380,20 @@ fn setup_librewolf() {
     } else {
         println!("   ✅ LibreWolf overrides applied (WiFi & Canvas fixed).");
     }
+    // Set as Default Browser (XDG)
+    println!("   👉 Setting LibreWolf as default browser...");
+    
+    let _ = Command::new("xdg-settings")
+        .args(["set", "default-web-browser", "librewolf.desktop"])
+        .status();
+
+    let _ = Command::new("xdg-mime")
+        .args(["default", "librewolf.desktop", "x-scheme-handler/http"])
+        .status();
+
+    let _ = Command::new("xdg-mime")
+        .args(["default", "librewolf.desktop", "x-scheme-handler/https"])
+        .status();
 }
 
 /// installs packages via pacman with --needed and --noconfirm
