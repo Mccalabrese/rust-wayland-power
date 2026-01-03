@@ -144,7 +144,11 @@ fn main() {
         match gpu {
             GpuVendor::Nvidia => {
                 println!("   👉 NVIDIA Detected.");
-                install_pacman_packages(NVIDIA_PACKAGES);
+                if is_turing_gpu() {
+                    install_nvidia_legacy_580();
+                } else {
+                    install_pacman_packages(NVIDIA_PACKAGES);
+                }
                 apply_nvidia_configs();
             },
             GpuVendor::Amd => {
@@ -283,6 +287,82 @@ fn find_igpu() -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// checks lspci to see if the card is Turing architecture (GTX 16xx / RTX 20xx)
+/// These cards require the 580 driver to sleep correctly.
+fn is_turing_gpu() -> bool {
+    let output = Command::new("lspci").arg("-v").output();
+    
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            // Check for specific Turing identifiers
+            // 1650, 1660, 2060, 2070, 2080 (and Super/Ti variants)
+            let is_16_series = stdout.contains("GeForce GTX 16");
+            let is_20_series = stdout.contains("GeForce RTX 20");
+            
+            if is_16_series || is_20_series {
+                return true;
+            }
+            false
+        },
+        Err(_) => false,
+    }
+}
+
+/// Installs the specific 580.119.02 driver from Arch Archive and locks it.
+fn install_nvidia_legacy_580() {
+    println!("\n{}", "🛑 Turing GPU Detected (GTX 16xx / RTX 20xx)".yellow().bold());
+    println!("   The latest NVIDIA drivers (590+) break power management on this card.");
+    println!("   Downgrading to version 580.119.02 for battery life safety...");
+
+    // 1. Install specific versions via URL
+    // We include lib32 variants assuming multilib is enabled (standard for gaming)
+    let packages = vec![
+        "https://archive.archlinux.org/packages/n/nvidia-dkms/nvidia-dkms-580.119.02-1-x86_64.pkg.tar.zst",
+        "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst",
+        "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst",
+        "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-580.119.02-1-x86_64.pkg.tar.zst"
+    ];
+
+    let mut args = vec!["-U", "--noconfirm"];
+    args.extend(packages);
+
+    let status = Command::new("sudo")
+        .arg("pacman")
+        .args(&args)
+        .status()
+        .unwrap_or_else(|_| {
+            eprintln!("❌ pacman failed to install legacy drivers.");
+            std::process::exit(1);
+        });
+
+    if !status.success() {
+        eprintln!("{}", "❌ Critical Error: Failed to install legacy NVIDIA drivers.".red());
+        std::process::exit(1);
+    }
+
+    // 2. Pin the version in pacman.conf
+    println!("   🔒 Pinning NVIDIA drivers in /etc/pacman.conf...");
+    let pacman_conf = "/etc/pacman.conf";
+    let ignore_line = "IgnorePkg = nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings";
+    
+    // Check if IgnorePkg is already active
+    let content = fs::read_to_string(pacman_conf).unwrap_or_default();
+    
+    if !content.contains("nvidia-dkms") {
+        // We look for the [options] header and insert IgnorePkg below it
+        // Or simply uncomment the existing IgnorePkg line if standard arch config
+        // Simplest robust method: Append to [options]
+        
+        let sed_cmd = format!("/^\\[options\\]/a {}", ignore_line);
+        let _ = Command::new("sudo")
+            .args(["sed", "-i", &sed_cmd, pacman_conf])
+            .status();
+            
+        println!("   ✅ Drivers pinned. System updates will skip NVIDIA.");
+    }
 }
 
 /// Generates the sway-hybrid wrapper script with DYNAMIC paths.

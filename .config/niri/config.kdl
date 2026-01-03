@@ -90,7 +90,7 @@ spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 spawn-at-startup "/usr/lib/geoclue-2.0/demos/agent"
 
 spawn-at-startup "nm-applet" "--indicator"
-spawn-at-startup "swaync"
+spawn-at-startup "sh" "-c" "swaync"
 spawn-at-startup "waybar-switcher"
 spawn-at-startup "udiskie" "--tray" "--no-automount"
 // Use spawn-sh-at-startup for commands needing shell features (like && or redirection)
