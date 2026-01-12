@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# 1. If it's running, kill it (Manual toggle)
+if pgrep -x "sidebar" > /dev/null; then
+    killall sidebar
+    exit 0
+fi
+
+# 2. If it's NOT running, did it just close automatically?
+# We check if the "Death Note" file was modified in the last 1 second.
+if [ -f "/tmp/sidebar_just_closed" ]; then
+    # Get current time and file time
+    NOW=$(date +%s%N)
+    FILE_TIME=$(stat -c %y "/tmp/sidebar_just_closed" 2>/dev/null)
+    
+    # Check if the file is "fresh" (modified less than 0.5 seconds ago)
+    # Using 'find' is the most robust portable way to check "modified recently"
+    if find "/tmp/sidebar_just_closed" -mmin -0.01 -print -quit | grep -q .; then
+        # It closed less than 0.6 seconds ago. Do not reopen.
+        exit 0
+    fi
+fi
+
+# 3. Safe to open
+$HOME/.cargo/bin/sidebar

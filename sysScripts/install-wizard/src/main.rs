@@ -40,51 +40,6 @@ const RUST_APPS: &[&str] = &[
     "radio-menu", "waybar-finance", "cal-tui",
 ];
 
-// Core System (Safe for ALL hardware)
-const COMMON_PACKAGES: &[&str] = &[
-    // Build / Core
-    "base-devel", "git", "go", "rustup", "openssl", "pkgconf", "glibc", "wget", "curl", "jq",
-    "man-db", "man-pages", "unzip", "tree", "linux-headers", "pciutils", "pacman-contrib",
-    
-    // Hardware (Generic)
-    "bolt", "upower", "tlp", "bluez", "bluez-utils", "blueman", 
-    "brightnessctl", "udiskie", "fwupd", "util-linux",
-    "intel-media-driver", "libva-utils", "vulkan-intel", 
-
-    // Compositors & Desktop
-    "sway", "hyprland", "niri", "gnome", "hyprlock", "swayidle", "hypridle",
-    "xdg-user-dirs-gtk", "greetd", "greetd-tuigreet",
-
-    // Wayland Infra
-    "xwayland-satellite", "qt5-wayland", "qt6-wayland", "polkit-gnome", 
-    "geoclue", "xdg-desktop-portal-gnome", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
-    "wl-clipboard", "cliphist",
-
-    // Audio
-    "pipewire", "pipewire-pulse", "pipewire-alsa", "pipewire-jack",
-    "wireplumber", "pavucontrol", "sof-firmware", "playerctl",
-    "mpv-mpris",
-
-    // File Mgmt
-    "thunar", "thunar-volman", "tumbler", "gvfs", "gvfs-mtp", "gvfs-smb", "gvfs-gphoto2", 
-    "file-roller", "gnome-disk-utility",
-
-    // Security / UI
-    "ufw", "timeshift", "seahorse", "gnome-keyring",
-    "waybar", "wofi", "rofi", "swww", "swaybg", "grim", "slurp", "mako",
-    "papirus-icon-theme", "gnome-themes-extra", "adwaita-icon-theme",
-
-    // Fonts
-    "ttf-jetbrains-mono-nerd", "ttf-fira-code", "ttf-jetbrains-mono",
-    "noto-fonts", "noto-fonts-emoji", "otf-font-awesome",
-
-    // Shell / Apps
-    "zsh", "starship", "ghostty", "tmux", "fzf", "ripgrep", "bat", "btop", "fastfetch", "neovim",
-    "networkmanager", "network-manager-applet", "cloudflared",
-    "discord", "tigervnc", "mpv", "gparted", "simple-scan", "gnome-calculator",
-    "cups", "system-config-printer", "cups-pdf", "zsh-autosuggestions", "zsh-syntax-highlighting",
-];
-
 // Hardware Specific: NVIDIA
 const NVIDIA_PACKAGES: &[&str] = &[
     "nvidia-dkms", "nvidia-prime", "nvidia-settings", "libva-nvidia-driver",
@@ -102,139 +57,179 @@ const AUR_PACKAGES: &[&str] = &[
     "librewolf-bin",
 ];
 // ---------- Main Execution ------_-------
+
+// ---------- Main Execution -----------------
 fn main() {
-    println!("{}", "🚀 Starting Rust Wayland Power Installation...".green().bold());
+    // 0. Parse Arguments
+    let args: Vec<String> = std::env::args().collect();
+    let refresh_mode = args.contains(&"--refresh-configs".to_string());
 
-    // 1. Elevate Privileges
-    // I check sudo access early, on new arch installs I ran into a permissions issue
-    // 'sudo -v' updates the credentials cache, hopefully avoiding timeouts on slower machines
-    let status = Command::new("sudo")
-        .arg("-v")
-        .status()
-        .unwrap_or_else(|_| {
-            eprintln!("Failed to execute sudo");
-            std::process::exit(1);
-        });
-    if !status.success() {
-        eprintln!("{}", "❌ Sudo privileges are required.".red());
-        std::process::exit(1);
-    }
-    // 1.5 Conflict Resolution: Remove jack2 so pipewire-jack can install
-    // We use -Rdd to remove it even if other packages depend on it, 
-    // because we are about to install the replacement immediately.
-    println!("\n{}", "⚔️  Resolving Audio Conflicts (Removing jack2)...".yellow());
-    let _ = Command::new("sudo")
-        .args(["pacman", "-Rdd", "--noconfirm", "jack2"])
-        .stdout(Stdio::null()) // Silence output (it might fail if not installed, that's fine)
-        .stderr(Stdio::null())
-        .status();
-    // 2. Install Common Packages (Pacman)
-    println!("\n{}", "📦 Installing Common Packages...".blue().bold());
-    install_pacman_packages(COMMON_PACKAGES);
-
-    // --- NEW: STATE CHECKPOINT LOGIC ---
-    let state_file = dirs::home_dir().unwrap().join(".cache/rust_installer_drivers_done");
-
-    if state_file.exists() {
-        println!("\n{}", "✅ Drivers already installed (Checkpoint found). Skipping to prevent crash.".green());
+    if refresh_mode {
+        println!("{}", "🔄 Running in CONFIG REFRESH MODE".magenta().bold());
+        // Quick sudo check
+        let status = Command::new("sudo").arg("-v").status().unwrap();
+        if !status.success() { eprintln!("{}", "❌ Sudo required.".red()); std::process::exit(1); }
     } else {
-        println!("\n{}", "🔍 Detecting GPU Hardware...".blue().bold());
-        let gpu = detect_gpu();
+        // ==========================================
+        //  FULL INSTALL MODE (Fresh Install Only)
+        // ==========================================
+        println!("{}", "🚀 Starting Rust Wayland Power Installation...".green().bold());
+        
+        let status = Command::new("sudo").arg("-v").status().expect("Failed to sudo");
+        if !status.success() { std::process::exit(1); }
 
-        // RUN DRIVER INSTALL
-        match gpu {
-            GpuVendor::Nvidia => {
-                println!("   👉 NVIDIA Detected.");
-                if is_turing_gpu() {
-                    install_nvidia_legacy_580();
-                } else {
-                    install_pacman_packages(NVIDIA_PACKAGES);
+        // 1. Conflict Resolution (Restored)
+        println!("\n{}", "⚔️  Resolving Audio Conflicts (Removing jack2)...".yellow());
+        let _ = Command::new("sudo").args(["pacman", "-Rdd", "--noconfirm", "jack2"])
+            .stdout(Stdio::null()).stderr(Stdio::null()).status();
+
+        // 2. Install Common Packages (Restored Package Loading)
+        println!("\n{}", "📦 Installing Packages...".blue().bold());
+        let common_pkgs = load_packages_from_file("pkglist.txt");
+        if common_pkgs.is_empty() {
+             println!("   ⚠️  No packages found in pkglist.txt.");
+        } else {
+             let pkg_refs: Vec<&str> = common_pkgs.iter().map(|s| s.as_str()).collect();
+             install_pacman_packages(&pkg_refs);
+        }
+
+        // 3. GPU Drivers (Restored Checkpoint & Exit Logic)
+        let state_file = dirs::home_dir().unwrap().join(".cache/rust_installer_drivers_done");
+
+        if state_file.exists() {
+            println!("\n{}", "✅ Drivers already installed (Checkpoint found). Skipping to prevent crash.".green());
+        } else {
+            println!("\n{}", "🔍 Detecting GPU Hardware...".blue().bold());
+            let gpu = detect_gpu();
+            match gpu {
+                GpuVendor::Nvidia => {
+                    println!("   👉 NVIDIA Detected.");
+                    if is_turing_gpu() { install_nvidia_legacy_580(); } 
+                    else { install_pacman_packages(NVIDIA_PACKAGES); }
+                    
+                    // We apply configs here immediately for the fresh install
+                    apply_nvidia_configs();
+                },
+                GpuVendor::Amd => {
+                    println!("   👉 AMD Detected.");
+                    install_pacman_packages(AMD_PACKAGES);
+                },
+                GpuVendor::Intel => println!("   👉 Intel Detected (Drivers in common)."),
+                GpuVendor::Unknown => println!("   ⚠️  No dedicated GPU detected."),
+            }
+
+            // CHECKPOINT & EXIT (Restored)
+            let is_gui = std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("DISPLAY").is_ok();
+            
+            if is_gui {
+                println!("\n{}", "⚠️  GRAPHICS DRIVERS INSTALLED".yellow().bold());
+                println!("We must reboot to load the new kernel modules safely.");
+                
+                // Create checkpoint
+                if let Ok(mut file) = fs::File::create(&state_file) {
+                    writeln!(file, "Drivers installed successfully.").unwrap();
                 }
-                apply_nvidia_configs();
-            },
-            GpuVendor::Amd => {
-                println!("   👉 AMD Detected.");
-                install_pacman_packages(AMD_PACKAGES);
-            },
-            GpuVendor::Intel => println!("   👉 Intel Detected (Drivers in common)."),
-            GpuVendor::Unknown => println!("   ⚠️  No dedicated GPU detected."),
+                
+                println!("{}", "✅ Checkpoint saved. Please REBOOT and RUN THIS SCRIPT AGAIN.".green().bold());
+                
+                let should_reboot = inquire::Confirm::new("Reboot now?")
+                    .with_default(true)
+                    .prompt()
+                    .unwrap_or(true);
+
+                if should_reboot {
+                    let _ = Command::new("sudo").arg("reboot").status();
+                }
+                
+                // STOP HERE to prevent crash
+                std::process::exit(0); 
+            }
         }
 
-        // CHECK: Are we in a GUI?
-        let is_gui = std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("DISPLAY").is_ok();
-
-        if is_gui {
-            println!("\n{}", "⚠️  GRAPHICS DRIVERS INSTALLED".yellow().bold());
-            println!("We must reboot to load the new kernel modules safely.");
-            println!("If we continue now, your session will crash.");
-            
-            // Create the checkpoint file
-            if let Ok(mut file) = fs::File::create(&state_file) {
-                writeln!(file, "Drivers installed successfully.").unwrap();
-            }
-            print_logo();
-            println!("{}", "✅ Checkpoint saved. Please REBOOT and RUN THIS SCRIPT AGAIN to finish.".green().bold());
-            println!("The script will automatically detect this step is done next time.");
-            
-            // Optional: Ask to reboot now
-            let should_reboot = inquire::Confirm::new("Reboot now?")
-                .with_default(true)
-                .prompt()
-                .unwrap_or(true);
-
-            if should_reboot {
-                let _ = Command::new("sudo").arg("reboot").status();
-            }
-            
-            std::process::exit(0); // STOP HERE
+        // 4. AUR (Restored)
+        if !AUR_PACKAGES.is_empty() {
+            println!("\n{}", "📦 Setting up AUR...".blue().bold());
+            install_aur_packages();
         }
-    }
-    // ------
-    // 4. AUR
-    // This will istall yay for a user to handle community packages (VS Code, Slack, etc)
-    #[allow(clippy::const_is_empty)]
-    if !AUR_PACKAGES.is_empty() {
-        println!("\n{}", "📦 Setting up AUR...".blue().bold());
-        install_aur_packages();
+        
+        // 5. Rust Setup (Restored)
+        println!("\n{}", "🦀 Setting up Rust & Building Tools...".blue().bold());
+        let _ = Command::new("rustup").args(["default", "stable"]).status();
+        build_custom_apps();
     }
 
-    // 5. System Config & hardening
+    // ==========================================
+    //  SHARED LOGIC (Runs on Install AND Refresh)
+    // ==========================================
     println!("\n{}", "⚙️  Applying System Configurations...".blue().bold());
-    configure_system(); //greetd, logind
+
+    // 1. Clean Up Sessions (Remove Gnome/UWSM junk)
+    optimize_pacman_config(); 
+
+    // 2. Refresh GPU Configs (SAFETY CHECKED)
+    // Only touch hardware configs if we actually have the hardware.
+    // This is vital for the Updater.
+    if detect_gpu() == GpuVendor::Nvidia {
+        // regenerate modprobe rules & sway-hybrid script based on current PCI ID
+        apply_nvidia_configs(); 
+    }
+
+    // 3. Session Ordering (Renames Niri -> 1. Niri, Fixes Sway Exec)
     enforce_session_order();
-    optimize_pacman_config(); //cleans session list and prevents updates from overriding 
-    
-    // 6. Rust Apps
-    println!("\n{}", "🦀 Setting up Rust & Building Tools...".blue().bold());
-    let _ = Command::new("rustup").args(["default", "stable"]).status();
-    // Compiles custom rust scripts, installs to ~/.cargo/bin
-    build_custom_apps();
 
-    // 7. Link Dotfiles & Copy Wallpapers
-    println!("\n{}", "🔗 Linking Config Files & Resources...".blue().bold());
-    // I'm using symlinks to keep the git repo as the source of truth
-    // Copies wallpapers (to allow user modification without messing with my repo).
-    link_dotfiles_and_copy_resources();
-    
-    // 8. Setup Waybar Configs
-    println!("\n{}", "🎨 Configuring Waybar...".blue().bold());
-    setup_waybar_configs();
-    // Setup librewolf configs
-    setup_librewolf();
+    // 4. Finalize
+    if !refresh_mode {
+        // --- FRESH INSTALL ONLY ---
+        // We DO NOT run these on update to avoid overwriting user customizations
+        
+        println!("\n{}", "🔗 Linking Config Files...".blue().bold());
+        link_dotfiles_and_copy_resources();
 
-    // 9. Secrets & Final Configs
-    println!("\n{}", "🔑 Configuring Secrets & API Keys...".blue().bold());
-    //Heres where API prompts will happen
-    //~/.config/rust-dotfiles/config.toml keeps users keys out of repo.
-    setup_secrets_and_geoclue();
-    // 10. Finalize (Plugins & Themes)
-    finalize_setup();
-    print_logo();
-    println!("\n{}", "✅ Installation Complete! Please Reboot.".green().bold());
-    
+        configure_system();
+        setup_librewolf();
+        setup_waybar_configs();
+        setup_secrets_and_geoclue();
+        finalize_setup(); // Neovim/Tmux plugins
+        
+        print_logo();
+        println!("\n{}", "✅ Installation Complete! Please Reboot.".green().bold());
+    } else {
+        // --- UPDATE MODE ---
+        print_logo();
+        println!("\n{}", "✅ Configs Refreshed Successfully.".green().bold());
+    }
 }
 
 // --- Helper functions ---
+
+/// Reads a package list from a text file (one package per line).
+/// Ignores empty lines and comments starting with '#'.
+fn load_packages_from_file(filename: &str) -> Vec<String> {
+    // We assume the file is in the repo root (parent of sysScripts)
+    // When running "cargo run", current_dir is usually sysScripts/install-wizard
+    let current_dir = std::env::current_dir().unwrap();
+    
+    // Walk up: install-wizard -> sysScripts -> repo_root
+    let candidates = vec![
+        current_dir.join(filename),                  // Same dir
+        current_dir.join(format!("../../{}", filename)), // Two dirs up (from sysScripts/install)
+        dirs::home_dir().unwrap().join("rust-wayland-power").join(filename) // Hard fallback
+    ];
+
+    for path in candidates {
+        if path.exists() {
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            return content
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .map(|line| line.to_string())
+                .collect();
+        }
+    }
+    eprintln!("⚠️ Could not find package list: {}", filename);
+    vec![]
+}
 
 /// Parses `lspci` output to identify GPU vendor IDs.
 /// 10de = NVIDIA, 1002 = AMD, 8086 = Intel.
@@ -323,7 +318,6 @@ fn install_nvidia_legacy_580() {
     let packages = vec![
         "https://archive.archlinux.org/packages/n/nvidia-dkms/nvidia-dkms-580.119.02-1-x86_64.pkg.tar.zst",
         "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst",
-        "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst",
         "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-580.119.02-1-x86_64.pkg.tar.zst"
     ];
 
@@ -690,24 +684,13 @@ fn optimize_pacman_config() {
     let pacman_conf = "/etc/pacman.conf";
     let content = fs::read_to_string(pacman_conf).unwrap_or_default();
     
-    if !content.contains("NoExtract = usr/share/wayland-sessions/niri.desktop") {
-        println!("   👉 Injecting NoExtract rules into [options]...");
-        
-        let no_extract_line = "NoExtract = usr/share/wayland-sessions/niri.desktop usr/share/wayland-sessions/hyprland.desktop usr/share/wayland-sessions/sway.desktop usr/share/wayland-sessions/gnome.desktop usr/share/wayland-sessions/gnome-classic.desktop usr/share/wayland-sessions/gnome-classic-wayland.desktop usr/share/wayland-sessions/hyprland-uwsm.desktop usr/share/wayland-sessions/gnome-wayland.desktop";
-        
-        // Use sed to append ('a') after the line matching '[options]'
-        let sed_cmd = format!("/^\\[options\\]/a {}", no_extract_line);
-        
-        let status = Command::new("sudo")
-            .args(["sed", "-i", &sed_cmd, pacman_conf])
+    if content.contains("NoExtract = usr/share/wayland-sessions/niri.desktop") {
+        //println!("   👉 Injecting NoExtract rules into [options]...");
+        println!("   👉 Removing old NoExtract rules to allow session updates...");
+        // Sed to delete lines containing "wayland-sessions"
+        let _ = Command::new("sudo")
+            .args(["sed", "-i", "/wayland-sessions/d", pacman_conf])
             .status();
-
-        match status {
-            Ok(s) if s.success() => println!("   ✅ Added NoExtract rules to pacman.conf"),
-            _ => eprintln!("   ❌ Failed to patch pacman.conf"),
-        }
-    } else {
-        println!("   ℹ️  NoExtract rules already present.");
     }
 }
 /// Applies specific fixes for NVIDIA on Wayland.
@@ -956,7 +939,17 @@ file = "~/.config/nvim/keybinds_nvim.txt"
     home.display()
     );
 
-    fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+    // Logic to handle if 'rust-dotfiles' exists as a file instead of a directory
+    if config_dir.exists() {
+        if !config_dir.is_dir() {
+            println!("   ⚠️  Found a file blocking config directory. Backing it up...");
+            let backup = format!("{}.bak", config_dir.display());
+            std::fs::rename(&config_dir, &backup).expect("Failed to move blocking file");
+            std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+        }
+    } else {
+        std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+    }
     fs::write(&config_path, config_content).expect("Failed to write config.toml");
     println!("   ✅ Config generated at {:?}", config_path);
 }

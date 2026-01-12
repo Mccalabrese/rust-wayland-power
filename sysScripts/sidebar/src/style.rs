@@ -1,50 +1,79 @@
+//! Sidebar Styling (CSS)
+//!
+//! This module manages the visual appearance of the application.
+//! It uses the standard GTK4 CSS provider to load a runtime stylesheet.
+//! 
+//! Design System:
+//! - **Colors:** Catppuccin-inspired palette (Blue accents, Dark Grey background).
+//! - **Glassmorphism:** Heavy use of semi-transparent backgrounds (`rgba`) and blur effects.
+//! - **Shapes:** Rounded corners (12px for cards, 99px for pills/circles).
+
 use gtk4::gdk;
 
 pub fn load_css() {
-    //create a CSS provider
+    // 1. Create a CSS Provider
+    // This acts as the bridge between our CSS string and the GTK rendering engine.
     let provider = gtk4::CssProvider::new();
-    //Css logic
+
+    // 2. Define Styles
+    // We load the CSS data directly from memory for a self-contained binary.
     provider.load_from_data("
+        /* --- BASE WINDOW & ZONES --- */
         window {
-        background-color: rgba(30, 30, 46, 0.95);
+            /* Dark, semi-transparent background (Catppuccin Base) */
+            background-color: rgba(30, 30, 46, 0.95);
         }
+
         .zone {
-        padding: 12px;
-        background-color: rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
+            /* The 'Cards' that group buttons together */
+            padding: 12px;
+            background-color: rgba(255, 255, 255, 0.08); /* White with low opacity = Glass */
+            border-radius: 12px;
         }
+
+        /* --- BUTTONS (Circular & Squared) --- */
+        /* Common resets to remove default GTK button styling */
         .circular-btn {
-        border-radius: 99px;
-        background-color: rgba(255, 255, 255, 0.1);
-        color: white;
-        border: none;
-        box-shadow: none;
-        background-image: none;
+            border-radius: 99px; /* Pill/Circle shape */
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            box-shadow: none;
+            background-image: none;
         }
+
         .squared-btn {
-        border-radius: 8px;
-        background-color: rgba(255, 255, 255, 0.1);
-        color: white;
-        border: none;
-        box-shadow: none;
-        padding: 0px;
-        background-image: none;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            box-shadow: none;
+            padding: 0px;
+            background-image: none;
         }
+
+        /* Hover States */
         .circular-btn:hover, .squared-btn:hover {
-            background-color: rgba(255, 255, 255, 0.2);
+            background-color: rgba(255, 255, 255, 0.2); /* Lighten on hover */
         }
+
+        /* Active/Toggled States (e.g., Airplane Mode ON) */
         .circular-btn.active, .squared-btn.active {
-            background-color: #3584e4;
+            background-color: #3584e4; /* Gnome Blue */
             color: white;
             background-image: none;
         }
+
         .circular-btn.active:hover, .squared-btn.active:hover {
-            background-color: #1c71d8;
+            background-color: #1c71d8; /* Darker Blue */
         }
+
+        /* --- TYPOGRAPHY & UTILS --- */
         .icon-text {
             font-size: 16px;
             font-weight: bold;
         }
+
         .badge {
             background-color: #ff5555; /* Red */
             color: white;
@@ -55,18 +84,23 @@ pub fn load_css() {
             font-weight: bold;
             padding-left: 3px;
             padding-right: 3px;
-            margin-top: -5px;  /* Nudge it up */
+            margin-top: -5px;  /* Nudge it up to overlap the icon */
             margin-right: -5px; /* Nudge it right */
         }
+
         .finance-text {
             font-size: 13px;
             font-weight: bold;
+            /* Monospace font for aligned stock ticker numbers */
             font-family: 'JetBrainsMono Nerd Font', 'Roboto Mono', monospace;
         }
+
         .hint-text {
             font-size: 10px;
-            color: alpha(white, 0.5);
+            color: alpha(white, 0.5); /* 50% Opacity */
         }
+
+        /* --- CALENDAR WIDGET --- */
         .calendar-title {
             font-size: 16px;
             font-weight: bold;
@@ -101,23 +135,24 @@ pub fn load_css() {
 
         .calendar-dot {
             font-size: 10px;
-            color: #f38ba8; /* Red */
+            color: #f38ba8; /* Red dot for appointments */
             margin-top: -5px; /* Pull it up closer to number */
         }
 
-        /* Today styling */
+        /* Highlights the current day */
         .today {
             background-color: #3584e4;
             color: white;
         }
         
-        /* Flat buttons for arrows */
+        /* Navigation Arrows */
         .flat {
             background: none;
             border: none;
             box-shadow: none;
         }
-        /* MEDIA PLAYER CARD */
+
+        /* --- MEDIA PLAYER CARD --- */
         .media-card {
             background-color: rgba(255, 255, 255, 0.08); /* Subtle glass effect */
             border-radius: 16px;
@@ -157,7 +192,8 @@ pub fn load_css() {
             font-size: 32px; /* Make Play/Pause slightly bigger */
             color: #89b4fa;  /* Accent color (Catppuccin Blueish) */
         }
-        /* SYSINFO CARD */
+        
+        /* --- SYSTEM INFO CARD --- */
         .sysinfo-card {
             background-color: transparent;
             padding: 20px 40px; /* Extra side padding to center it visually */
@@ -178,6 +214,9 @@ pub fn load_css() {
             margin-bottom: 8px;
         }
     ");
+
+    // 3. Apply to Display
+    // Register this provider for the default screen so all widgets inherit these styles.
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
