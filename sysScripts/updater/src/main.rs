@@ -114,45 +114,23 @@ fn main() -> Result<()> {
     let global_conf = config.global;
     let updater_conf = config.updater;
 
-    // Resolve relative paths immediately to avoid runtime errors later
+    // Resolve relative paths
     let icon_error = expand_path(&updater_conf.icon_error);
     let icon_success = expand_path(&updater_conf.icon_success);
     
-    // 2. Dependency Verification
-    // Ensure the terminal and the update helper (e.g. 'yay') exist.
-    // If not, alert the user and abort.
+    // Dependency Verification
     let terminal_cmd = &global_conf.terminal;
-    let update_bin = updater_conf.update_command.first()
-        .context("'update_command' in config.toml is empty")?;
+    let update_bin = updater_conf.update_command.first().context("update_command empty")?;
 
-    if !check_dependency(terminal_cmd) {
-        let _ = send_notification(
-            "Error: Dependency Missing",
-            &format!("Terminal not found: {}", terminal_cmd),
-            &icon_error,
-            Urgency::Critical,
-        );
-        return Err(anyhow!("Dependency missing: {}", terminal_cmd));
-    }
-
-    if !check_dependency(update_bin) {
-        let _ = send_notification(
-            "Error: Dependency Missing",
-            &format!("Update helper not found: {}", update_bin),
-            &icon_error,
-            Urgency::Critical,
-        );
-        return Err(anyhow!("Dependency missing: {}", update_bin));
-    }
+    if !check_dependency(terminal_cmd) { return Err(anyhow!("Terminal not found: {}", terminal_cmd)); }
+    if !check_dependency(update_bin) { return Err(anyhow!("Update helper not found: {}", update_bin)); }
     
-    // 3. Script Construction
-    // We dynamically build a Bash script to run inside the terminal.
-    // This allows us to handle exit codes ($?) and conditional execution (fwupdmgr)
-    // within the interactive session.
     let update_cmd_str = updater_conf.update_command.join(" ");
     
+    // --- CONSTRUCT THE BASH SCRIPT ---
+    // We use a raw string literal (r#...#) so we can write Bash naturally.
     let bash_script = format!(r#"
-        cat << 'EOF'
+        cat << "EOF"
 {}
 EOF
         echo -e "\n🚀 Starting System Update..."
@@ -162,7 +140,6 @@ EOF
         sys_exit=$?
 
         # --- 2. FIRMWARE UPDATE ---
-        # Interactive check: Only prompts if updates exist.
         if [ $sys_exit -eq 0 ]; then
             echo -e "\n\n🔌 Checking for Firmware Updates..."
             if command -v fwupdmgr &> /dev/null; then
@@ -170,8 +147,7 @@ EOF
                 if fwupdmgr get-updates 2>&1 | grep -q "No updates"; then
                     echo "✔ Firmware is up to date."
                 else
-                    echo -e "\n⚠️  Firmware updates available!"
-                    echo "Starting update process..."
+                    echo -e "\n⚠️  Firmware updates available! Updating..."
                     sudo fwupdmgr update
                 fi
             else
@@ -181,26 +157,50 @@ EOF
             echo -e "\n⚠ System update failed, skipping firmware/scripts."
         fi
 
-        # --- 3. RUST TOOLS SELF-UPDATE ---
+        # --- 3. REFRESH CONFIGS & PACKAGES ---
+        if [ $sys_exit -eq 0 ]; then
+            echo -e "\n\n🔄 Refreshing Session Configs..."
+            
+            # A. Run Installer in "Refresh Mode"
+            # This handles: 
+            #   1. Deleting unwanted Gnome/UWSM sessions
+            #   2. Renaming Niri/Hyprland sessions
+            #   3. Regenerating Sway-Hybrid wrapper (if Nvidia detected)
+            INSTALLER_BIN="$HOME/.cargo/bin/install-wizard"
+            
+            if [ -f "$INSTALLER_BIN" ]; then
+                 sudo "$INSTALLER_BIN" --refresh-configs
+            else
+                 echo "⚠️ Installer binary not found. Skipping config refresh."
+                 echo "Run 'cargo build --release' in sysScripts/install-wizard to fix."
+            fi
+
+            # B. Install New Packages from Repo Root
+            PKG_FILE="$HOME/rust-wayland-power/pkglist.txt"
+            if [ -f "$PKG_FILE" ]; then
+                echo -e "\n📦 Checking for new packages in pkglist.txt..."
+                # Bash trick: grep removes comments, pacman installs differences
+                grep -v "^#" "$PKG_FILE" | sudo pacman -S --needed --noconfirm -
+            else
+                echo "⚠️ pkglist.txt not found at $PKG_FILE"
+            fi
+        fi
+
+        # --- 4. RUST TOOLS SELF-UPDATE ---
         if [ $sys_exit -eq 0 ]; then
             echo -e "\n\n🦀 Checking for Rust Script Updates..."
-            
             if [ -d "$HOME/rust-wayland-power/.git" ]; then
-                cd ~/rust-wayland-power
+                cd "$HOME/rust-wayland-power"
                 
-                # Safety Check: Prevent overwriting local dev work
+                # Check for local changes to avoid overwriting work
                 if ! git diff --quiet sysScripts || ! git diff --cached --quiet sysScripts; then
-                    echo -e "\n⚠️  Local changes detected in sysScripts!"
-                    echo "Skipping auto-update to prevent data loss."
+                    echo -e "\n⚠️  Local changes detected in sysScripts! Skipping update."
                 else
                     echo "Fetching remote..."
                     git fetch origin main
                     
-                    # Direct check: Did sysScripts change on the remote vs here?
                     if ! git diff --quiet HEAD..origin/main -- sysScripts; then
-                        echo -e "\n✨ Updates detected in sysScripts! Syncing..."
-                        
-                        # Partial Checkout: Only update the scripts folder
+                        echo -e "\n✨ Updates detected! Syncing..."
                         git checkout origin/main -- sysScripts
                         
                         echo "🔨 Recompiling Toolchain..."
@@ -211,32 +211,24 @@ EOF
                                 (cd "$dir" && cargo install --path . --force --quiet)
                             fi
                         done
-                        echo -e "✅ Custom tools updated successfully."
+                        echo -e "✅ Custom tools updated."
                     else
                         echo "✔ Rust tools are up to date."
                     fi
                 fi
-            else
-                echo "⚠ Repo not found or invalid git state. Skipping script update."
             fi
         fi
 
         echo -e "\n\n🏁 Process finished. Closing in 5s..."
         sleep 5
 
-        if [ $sys_exit -ne 0 ]; then
-            exit 1
-        else
-            exit 0
-        fi
+        if [ $sys_exit -ne 0 ]; then exit 1; else exit 0; fi
         "#,
         LOGO,
         update_cmd_str
     );
 
     // Interactive Execution
-    // Launch the terminal emulator running our constructed script.
-    // Wait for it to close to determine success/failure.
     let status = Command::new(terminal_cmd)
         .arg(format!("--title={}", updater_conf.window_title))
         .arg("-e")
@@ -246,21 +238,11 @@ EOF
         .status()
         .context(format!("Failed to launch terminal: {}", terminal_cmd))?;
     
-    // Final notification (using config icons)
+    // Notifications
     if status.success() {
-        send_notification(
-            "System Update Complete",
-            "Your Arch Linux system has been successfully updated.",
-            &icon_success,
-            Urgency::Low,
-        )?;
+        send_notification("System Update Complete", "All updates applied successfully.", &icon_success, Urgency::Low)?;
     } else {
-        send_notification(
-            "System Update Failed",
-            "The update process encountered an error.",
-            &icon_error,
-            Urgency::Critical,
-        )?;
+        send_notification("System Update Failed", "The update process encountered an error.", &icon_error, Urgency::Critical)?;
     }
     Ok(())
 }

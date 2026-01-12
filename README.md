@@ -140,7 +140,8 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
   * **`cf-toggle`**: The `on-click` script that securely toggles Cloudflare DNS over HTTPS on or off using `pkexec`.
 
 <p align="center">
-  <img src="screenshots/cf-toggle.png" width="60%" alt="Cloudflare toggle module"/>
+  <img src="screenshots/DNS.png" width="80%" alt="Cloudflare DNS over HTTPS status"/>
+  <img src="screenshots/cf-toggle.png" width="20%" alt="Cloudflare toggle module"/>
   </p>
 
 * **`wallpaper-manager`**: A 3-part system that manages all your wallpapers.
@@ -161,10 +162,10 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 
 * **`updater`**: The `on-click` script for the `update-check` module. It simply launches your terminal (`ghostty`) to run the actual system update.
 
-* **`power-menu`**: The graphical power menu (`Ctrl+Alt+P`). It's a compositor-aware launcher for `wlogout` that automatically calculates the correct screen position and scaling for Niri, Hyprland, and Sway.
+* **`sidebar`**: Sidebar control interface. Includes a calender, finance tooltip that launches TUI on click, launchers to rust binaries, and system controls like brightness and volume.
 
 <p align="center">
-  <img src="screenshots/power-menu.png" width="60%" alt="Power Menu formatting"/>
+  <img src="screenshots/sidebar.png" width="60%" alt="Power Menu formatting"/>
   </p>
 
 * **`rfkill-manager`**:
@@ -191,7 +192,7 @@ All the helper scripts in this repo have been rewritten in Rust for maximum perf
 * **`waybar-finance`**: A lightweight TUI market watch list application with charts, and security details. Designed to be run in a terminal multiplexer like tmux or ghostty. This will request that you create and enter a Finnhub.io API key on first run. The app will display quoting of your watchlist items as a tooltip on hover over its icon in Waybar.
 
 <p align="center">
-  <img src="screenshots/waybar-finance-tooltip.png" width="32%" alt="waybar finance tooltip"/>
+  <img src="screenshots/waybar-finance-tooltip.png" width="65%" alt="waybar finance tooltip"/>
   <img src="screenshots/waybar-finance-tui.png" width="65%" alt="finance TUI" />
   </p>
 
