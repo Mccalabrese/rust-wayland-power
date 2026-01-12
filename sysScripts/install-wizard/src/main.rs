@@ -36,8 +36,8 @@ const RUST_APPS: &[&str] = &[
     // My custom toolchain
     "waybar-switcher", "waybar-weather", "sway-workspace", "update-check",
     "cloudflare-toggle", "wallpaper-manager", "kb-launcher", "updater",
-    "power-menu", "rfkill-manager", "clip-manager", "emoji-picker",
-    "radio-menu", "waybar-finance",
+    "sidebar", "rfkill-manager", "clip-manager", "emoji-picker",
+    "radio-menu", "waybar-finance", "cal-tui",
 ];
 
 // Core System (Safe for ALL hardware)
@@ -48,7 +48,7 @@ const COMMON_PACKAGES: &[&str] = &[
     
     // Hardware (Generic)
     "bolt", "upower", "tlp", "bluez", "bluez-utils", "blueman", 
-    "brightnessctl", "udiskie", "fwupd",
+    "brightnessctl", "udiskie", "fwupd", "util-linux",
     "intel-media-driver", "libva-utils", "vulkan-intel", 
 
     // Compositors & Desktop
@@ -62,7 +62,8 @@ const COMMON_PACKAGES: &[&str] = &[
 
     // Audio
     "pipewire", "pipewire-pulse", "pipewire-alsa", "pipewire-jack",
-    "wireplumber", "pavucontrol", "sof-firmware",
+    "wireplumber", "pavucontrol", "sof-firmware", "playerctl",
+    "mpv-mpris",
 
     // File Mgmt
     "thunar", "thunar-volman", "tumbler", "gvfs", "gvfs-mtp", "gvfs-smb", "gvfs-gphoto2", 
@@ -70,7 +71,7 @@ const COMMON_PACKAGES: &[&str] = &[
 
     // Security / UI
     "ufw", "timeshift", "seahorse", "gnome-keyring",
-    "waybar", "wofi", "rofi", "swaync", "swww", "swaybg", "grim", "slurp", "mako",
+    "waybar", "wofi", "rofi", "swww", "swaybg", "grim", "slurp", "mako",
     "papirus-icon-theme", "gnome-themes-extra", "adwaita-icon-theme",
 
     // Fonts
@@ -81,24 +82,24 @@ const COMMON_PACKAGES: &[&str] = &[
     "zsh", "starship", "ghostty", "tmux", "fzf", "ripgrep", "bat", "btop", "fastfetch", "neovim",
     "networkmanager", "network-manager-applet", "cloudflared",
     "discord", "tigervnc", "mpv", "gparted", "simple-scan", "gnome-calculator",
-    "cups", "system-config-printer", "cups-pdf", "zsh-autosuggestions", "zsh-syntax-highlighting"
+    "cups", "system-config-printer", "cups-pdf", "zsh-autosuggestions", "zsh-syntax-highlighting",
 ];
 
 // Hardware Specific: NVIDIA
 const NVIDIA_PACKAGES: &[&str] = &[
-    "nvidia-dkms", "nvidia-prime", "nvidia-settings", "libva-nvidia-driver"
+    "nvidia-dkms", "nvidia-prime", "nvidia-settings", "libva-nvidia-driver",
 ];
 
 // Hardware Specific: AMD
 const AMD_PACKAGES: &[&str] = &[
-    "vulkan-radeon", "libva-mesa-driver", "xf86-video-amdgpu"
+    "vulkan-radeon", "libva-mesa-driver", "xf86-video-amdgpu",
 ];
 
 // AUR
 const AUR_PACKAGES: &[&str] = &[
-    "wlogout", "zoom", "slack-desktop", "ledger-live-bin", 
+    "zoom", "slack-desktop", "ledger-live-bin", 
     "visual-studio-code-bin", "pinta", "ttf-victor-mono", "ytmdesktop-bin", 
-    "librewolf-bin"
+    "librewolf-bin",
 ];
 // ---------- Main Execution ------_-------
 fn main() {
@@ -896,8 +897,8 @@ error_icon = "!"
 
 [updater]
 update_command = ["yay", "-Syu"]
-icon_success = "~/.config/swaync/images/ja.png"
-icon_error = "~/.config/swaync/images/error.png"
+icon_success = "/usr/share/icons/Adwaita/48x48/status/software-update-available.png"
+icon_error = "/usr/share/icons/Adwaita/48x48/status/dialog-error.png"
 window_title = "System Update"
 
 [waybar_switcher]
@@ -916,17 +917,6 @@ resolv_content_off = "nameserver 1.1.1.1\nnameserver 1.0.0.1"
 bar_process_name = "waybar"
 bar_signal_num = 10
 
-[rfkill_toggle]
-icon = "~/.config/swaync/images/ja.png"
-text_on = "✈️️"
-class_on = "on"
-tooltip_on = "Airplane Mode: ON"
-text_off = "󰀝"
-class_off = "off"
-tooltip_off = "Airplane Mode: OFF"
-bar_process_name = "waybar"
-bar_signal_num = 11
-
 [clip_manager]
 rofi_config = "~/.config/rofi/config-clipboard.rasi"
 message = "CTRL+DEL = Delete Entry | ALT+DEL = Wipe History"
@@ -938,25 +928,6 @@ message = "Search Emojis (Name or Keyword)"
 [radio_menu]
 rofi_config = "~/.config/rofi/config-radio.rasi"
 message = "Radio Menu"
-
-[power_menu]
-columns = 6
-[power_menu.res_2160]
-top_margin = 600.0
-bottom_margin = 600.0
-[power_menu.res_1600]
-top_margin = 400.0
-bottom_margin = 400.0
-[power_menu.res_1440]
-top_margin = 400.0
-bottom_margin = 400.0
-[power_menu.res_1080]
-top_margin = 200.0
-bottom_margin = 200.0
-[power_menu.res_720]
-top_margin = 50.0
-bottom_margin = 50.0
-columns = 3
 
 [kb_launcher.compositor_args]
 hyprland = ["--title=KeybindCheatSheetApp"]
@@ -1074,9 +1045,8 @@ fn link_dotfiles_and_copy_resources() {
         (".tmux.conf", ".tmux.conf"), (".profile", ".profile"), (".zshrc", ".zshrc"),
         (".config/waybar", ".config/waybar"), (".config/sway", ".config/sway"),
         (".config/hypr", ".config/hypr"), (".config/niri", ".config/niri"),
-        (".config/rofi", ".config/rofi"), (".config/swaync", ".config/swaync"),
+        (".config/rofi", ".config/rofi"),
         (".config/ghostty", ".config/ghostty"), (".config/fastfetch", ".config/fastfetch"),
-        (".config/wlogout", ".config/wlogout"),
         (".config/gtk-3.0", ".config/gtk-3.0"), (".config/gtk-4.0", ".config/gtk-4.0"),
         (".config/environment.d", ".config/environment.d"), (".config/mako", ".config/mako"),
     ];

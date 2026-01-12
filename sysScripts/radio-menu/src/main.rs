@@ -140,6 +140,7 @@ fn play_station(station_name: &str, url: &str) -> Result<()> {
     
     Command::new("mpv")
         .arg("--no-video")
+        .arg(format!("--force-media-title={}", station_name))
         .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

@@ -1,21 +1,26 @@
 
 {
 // GROUPS
-"group/app_drawer": {
-	"orientation": "inherit",
-	"drawer": {
-		"transition-duration": 500,
-		"children-class": "custom/menu",
-		"transition-left-to-right": true
-        },
-	"modules": [
-		"custom/menu",
-		"custom/light_dark",
-		"custom/file_manager",
-		"custom/tty",
-		"custom/browser",
-		"custom/settings",
-	]
+"group/apps": {
+  "orientation": "horizontal",
+  "drawer": {
+    "transition-duration": 500,
+    "children-class": "app-drawer-child",
+    "transition-left-to-right": true
+  },
+  "modules": [
+    "custom/menu",      // The Anchor (Always visible)
+    "custom/browser",
+    "custom/file_manager",
+    "custom/tty",
+    "custom/vnc",
+    "custom/ytm",
+    "custom/ledger",
+    "custom/slack",
+    "custom/vscode",
+    "custom/zoom",
+    "custom/discord" 
+  ]
 },
 "group/motherboard": {
 	"orientation": "horizontal",

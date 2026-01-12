@@ -69,8 +69,8 @@ error_icon = "!"
 # The command and its arguments
 update_command = ["yay", "-Syu"]
 # Full paths to your icons (using ~)
-icon_success = "~/.config/swaync/images/ja.png"
-icon_error = "~/.config/swaync/images/error.png"
+icon_success = "/usr/share/icons/Adwaita/48x48/status/software-update-available.png"
+icon_error = "/usr/share/icons/Adwaita/48x48/status/dialog-error.png"
 # The title for the terminal window
 window_title = "System Update"
 
@@ -98,50 +98,6 @@ resolv_content_off = "nameserver 1.1.1.1\nnameserver 1.0.0.1"
 bar_process_name = "waybar"
 bar_signal_num = 10 # The '10' from 'SIGRTMIN() + 10'
 
-[power_menu]
-# Base margins for a 1.0x scaled display at each resolution tier
-# Our Rust app will multiply these by your monitor's actual scale.
-columns = 6 # Default number of columns
-
-[power_menu.res_2160]
-top_margin = 600
-bottom_margin = 600
-
-[power_menu.res_1600]
-top_margin = 400
-bottom_margin = 400
-
-[power_menu.res_1440]
-top_margin = 400
-bottom_margin = 400
-
-[power_menu.res_1080]
-top_margin = 200
-bottom_margin = 200
-
-[power_menu.res_720]
-top_margin = 50
-bottom_margin = 50
-columns = 3 # This resolution uses a different layout
-
-[rfkill_toggle]
-# Icon to use for the notification
-icon = "~/.config/swaync/images/ja.png"
-
-# Waybar display for "ON" (blocked)
-text_on = "✈️️" # Example: "ON" or airplane icon
-class_on = "on"
-tooltip_on = "Airplane Mode: ON"
-
-# Waybar display for "OFF" (unblocked)
-text_off = "󰀝" # Example: "OFF" or wifi icon
-class_off = "off"
-tooltip_off = "Airplane Mode: OFF"
-
-# Waybar signal (to refresh the module)
-bar_process_name = "waybar"
-bar_signal_num = 11 # We'll use 11 for this one
-
 [clip_manager]
 rofi_config = "~/.config/rofi/config-clipboard.rasi"
 message = "CTRL+DEL = Delete Entry | ALT+DEL = Wipe History"
@@ -153,3 +109,7 @@ message = "Search Emojis (Name or Keyword)"
 [radio_menu]
 rofi_config = "~/.config/rofi/config-radio.rasi"
 message = "Radio Menu"
+
+[waybar_finance]
+api_key = "YOUR_FINNHUB_KEY_HERE"
+stocks = ["SPY", "QQQ", "NVDA"]

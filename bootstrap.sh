@@ -105,9 +105,6 @@ rustup default stable
 # Ensure cargo binaries are in PATH for this session
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# Ensure cargo binaries are in PATH for this session
-export PATH="$HOME/.cargo/bin:$PATH"
-
 # 7. Handover to Rust
 echo -e "${BLUE}🔵 [Stage 2] Launching Install Wizard...${NC}"
 echo -e "Compiling installer binary..."

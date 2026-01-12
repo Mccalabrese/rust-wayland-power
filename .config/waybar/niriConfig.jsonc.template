@@ -2,44 +2,6 @@
   {
     "include": [
       "$HOME/.config/waybar/Modules",
-      "$HOME/.config/waybar/ModulesCustom",
-      "$HOME/.config/waybar/ModulesGroups",
-      "$HOME/.config/waybar/UserModules"
-    ],
-    "layer": "top",
-    "exclusive": true,
-    "passthrough": false,
-    "position": "top",
-    "spacing": 3,
-    "fixed-center": true,
-    "margin-top": 1,
-    "margin-left": 8,
-    "margin-right": 8,
-    "modules-left": [
-      "cpu",
-      "temperature",
-      "memory",
-      "disk"
-    ],
-    "modules-center": [
-      "custom/separator#blank",
-      "custom/radio",
-      "clock",
-      "custom/hint",
-      "custom/weather"
-    ],
-    "modules-right": [
-      "battery",
-      "backlight",
-      "custom/updater",
-      "custom/cycle_wall",
-      "pulseaudio",
-      "pulseaudio#microphone"
-    ]
-  },
-  {
-    "include": [
-      "$HOME/.config/waybar/Modules",
       "$HOME/.config/waybar/ModulesWorkspaces",
       "$HOME/.config/waybar/ModulesCustom",
       "$HOME/.config/waybar/ModulesGroups",
@@ -55,31 +17,21 @@
     "margin-left": 8,
     "margin-right": 8,
     "modules-left": [
-      "custom/menu",
-      "custom/browser",
-      "custom/settings",
-      "custom/file_manager",
-      "custom/tty",
-      "custom/vnc",
-      "custom/ytm",
-      "custom/ledger",
-      "custom/slack",
-      "custom/vscode",
-      "custom/zoom",
-      "custom/discord"
+      "custom/weather",
+      "clock",
+      "tray",
+      "group/apps"
     ],
     "modules-center": [
-      "idle_inhibitor",
       "wlr/taskbar"
     ],
     "modules-right": [
-      "tray",
-      "custom/finance",
-      "custom/separator#blank",
-      "custom/cloudflared",
-      "custom/lock",
-      "group/notify",
-      "custom/power"
+      "battery",
+      "cpu",
+      "temperature",
+      "memory",
+      "disk",
+      "custom/sidebar_toggle"
     ]
   }
 ]

@@ -194,11 +194,16 @@
 	"tooltip": true
 },
 "custom/cloudflared": {
-    "exec": "$HOME/.cargo/bin/cf-status",
-    "return-type": "json",
-    "on-click": "$HOME/.cargo/bin/cf-toggle",
-    "interval": "once", 
-    "signal": 10
+  "exec": "$HOME/.cargo/bin/cf-status",
+  "return-type": "json",
+  "on-click": "$HOME/.cargo/bin/cf-toggle",
+  "interval": "once", 
+  "signal": 10
+},
+
+"custom/sidebar_toggle": {
+  "format": "  ",
+  "on-click": "$HOME/.cargo/bin/sidebar-toggle"
 },
 // Separators
 "custom/separator#dot": {

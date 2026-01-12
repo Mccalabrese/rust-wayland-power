@@ -28,5 +28,11 @@
     "url_resolved": "http://fluxfm.streamabc.net/flx-chillhop-mp3-320-1595440?sABC=6939p0p1%230%23q7s809s74070n543n7p5213q6qr39235%23&aw_0_1st.playerid=&amsparams=playerid:;skey:1765392577",
     "tags": "",
     "stationuuid": "008edbea-c5fb-11e9-8502-52543be04c81"
+  },
+  {
+    "name": "Radio Caprice - Glitch / Glitch-Hop [1]",
+    "url_resolved": "http://79.111.14.76:8002/glitch",
+    "tags": "electronic,glitch,glitch-hop,radcap",
+    "stationuuid": "67db7a0f-0057-42bc-93c1-4abac91e82cb"
   }
 ]

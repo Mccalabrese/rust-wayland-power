@@ -17,25 +17,17 @@
     "margin-left": 8,
     "margin-right": 8,
     "modules-left": [
-      "custom/separator#blank",
-      "custom/radio",
       "clock",
-      "custom/hint"
+      "tray",
+      "group/apps"
     ],
     "modules-center": [
-      "idle_inhibitor",
       "custom/sway_workspace_number",
       "wlr/taskbar"
     ],
     "modules-right": [
       "battery",
-      "pulseaudio",
-      "custom/cycle_wall",
-      "custom/finance",
-      "custom/menu",
-      "custom/cloudflared",
-      "tray",
-      "custom/power"
+      "custom/sidebar_toggle"
     ],
     "custom/sway_workspace_number": {
       "interval": 2,
