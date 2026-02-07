@@ -191,30 +191,35 @@ EOF
             echo -e "\n\n🦀 Checking for Rust Script Updates..."
             if [ -d "$HOME/rust-wayland-power/.git" ]; then
                 cd "$HOME/rust-wayland-power"
-                
-                # Check for local changes to avoid overwriting work
-                if ! git diff --quiet sysScripts || ! git diff --cached --quiet sysScripts; then
-                    echo -e "\n⚠️  Local changes detected in sysScripts! Skipping update."
-                else
-                    echo "Fetching remote..."
-                    git fetch origin main
+
+                echo "Fetching remote..."
+                git fetch origin main
+
+                # Check if we are behind
+                if ! git diff --quiet HEAD..origin/main -- sysScripts; then
+                    echo -e "\n✨ Updates detected in sysScripts!"
                     
-                    if ! git diff --quiet HEAD..origin/main -- sysScripts; then
-                        echo -e "\n✨ Updates detected! Syncing..."
-                        git checkout origin/main -- sysScripts
-                        
-                        echo "🔨 Recompiling Toolchain..."
-                        cd sysScripts
-                        for dir in */; do
-                            if [ -f "$dir/Cargo.toml" ]; then
-                                echo "   >> Compiling $dir..."
-                                (cd "$dir" && cargo install --path . --force --quiet)
-                            fi
-                        done
-                        echo -e "✅ Custom tools updated."
-                    else
-                        echo "✔ Rust tools are up to date."
-                    fi
+                    # FORCE RESET sysScripts to match remote
+                    # This fixes the "Cargo.lock" and "chmod" issues automatically.
+                    # We ONLY reset sysScripts, preserving their .config setup in the root.
+                    echo "🧹 Cleaning local artifacts in sysScripts..."
+                    git checkout origin/main -- sysScripts
+                    
+                    echo "✨ Syncing..."
+                    git pull origin main
+
+                    echo "🔨 Recompiling Toolchain..."
+                    cd sysScripts
+                    for dir in */; do
+                        if [ -f "$dir/Cargo.toml" ]; then
+                            echo "   >> Compiling $dir..."
+                            # We use --locked to prevent Cargo.lock from changing again and triggering this loop next time
+                            (cd "$dir" && cargo install --path . --force --quiet --locked)
+                        fi
+                    done
+                    echo -e "✅ Custom tools updated."
+                else
+                     echo "✔ Rust tools are up to date."
                 fi
             fi
         fi
