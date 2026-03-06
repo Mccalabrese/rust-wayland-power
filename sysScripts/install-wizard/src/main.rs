@@ -106,9 +106,6 @@ fn main() {
                     println!("   👉 NVIDIA Detected.");
                     if is_turing_gpu() { install_nvidia_legacy_580(); } 
                     else { install_pacman_packages(NVIDIA_PACKAGES); }
-                    
-                    // We apply configs here immediately for the fresh install
-                    apply_nvidia_configs();
                 },
                 GpuVendor::Amd => {
                     println!("   👉 AMD Detected.");
@@ -169,13 +166,15 @@ fn main() {
     // 2. Refresh GPU Configs (SAFETY CHECKED)
     // Only touch hardware configs if we actually have the hardware.
     // This is vital for the Updater.
-    if detect_gpu() == GpuVendor::Nvidia {
+    let current_gpu = detect_gpu();
+    let is_nvidia = current_gpu == GpuVendor::Nvidia;
+    if is_nvidia {
         // regenerate modprobe rules & sway-hybrid script based on current PCI ID
         apply_nvidia_configs(); 
     }
 
     // 3. Session Ordering (Renames Niri -> 1. Niri, Fixes Sway Exec)
-    enforce_session_order();
+    enforce_session_order(is_nvidia);
 
     // 4. Finalize
     if !refresh_mode {
@@ -561,7 +560,7 @@ fn configure_system() {
     run_cmd("sudo", &["systemctl", "enable", "bolt.service"]);
 
     // --- CLOUDFLARED CONFIGURATION ---
-    println!("   🔧 Configuring Cloudflared (DNS Proxy)...");
+    println!("   🔧 Configuring dnscrypt-proxy (DNS Proxy)...");
     
     // 1. Ensure package is installed (failsafe)
     let _ = Command::new("sudo").args(["pacman", "-S", "--needed", "--noconfirm", "dnscrypt-proxy"]).status();
@@ -1015,7 +1014,7 @@ fn build_custom_apps() {
 /// Renames session files to enforce a specific order in Greetd/Tuigreet.
 /// Strategy: Move standard files (e.g. hyprland.desktop) to custom numbered files (30-hyprland.desktop).
 /// This prevents Pacman from deleting our custom config during updates while NoExtract is active.
-fn enforce_session_order() {
+fn enforce_session_order(is_nvidia: bool) {
     println!("   🔧 Enforcing Session Order (Renaming .desktop files)...");
     
     let sessions_dir = "/usr/share/wayland-sessions";
@@ -1054,12 +1053,23 @@ fn enforce_session_order() {
     let sway_session = "/usr/share/wayland-sessions/20-sway.desktop";
     
     if Path::new(sway_session).exists() {
-        println!("   🔧 Pointing Sway (Battery) to hybrid wrapper...");
-        
-        // Replace Exec=sway with Exec=/usr/local/bin/sway-hybrid
-        let _ = Command::new("sudo")
-            .args(["sed", "-i", "s|^Exec=.*|Exec=/usr/local/bin/sway-hybrid|", sway_session])
-            .status();
+        if is_nvidia {
+            println!("   🔧 Pointing Sway (Battery) to NVIDIA hybrid wrapper...");
+            // Replace Exec=sway with Exec=/usr/local/bin/sway-hybrid
+            let _ = Command::new("sudo")
+                .args(["sed", "-i", "s|^Exec=.*|Exec=/usr/local/bin/sway-hybrid|", sway_session])
+                .status();
+        } else {
+            println!(" 🔧 Ensuring Sway uses native launch (Non-NVIDIA)...");
+            // Standardize back to native sway
+            let _ = Command::new("sudo")
+                .args(["sed", "-i", "s|^Exec=.*|Exec=sway|", sway_session])
+                .status();
+            //Clean up wwrapper script if it exists from a previous hardware config
+            let _ = Command::new("sudo")
+                .args(["rm", "-f", "/usr/local/bin/sway-hybrid"])
+                .status();
+        }
     }
 }
 
