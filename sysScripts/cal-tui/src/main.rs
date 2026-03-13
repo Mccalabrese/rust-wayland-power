@@ -12,6 +12,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use app::{App, InputMode, EditField, RecField};
 use chrono::{Duration, NaiveTime, Weekday}; // For moving days
+use crate::app::ViewMode;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Setup Terminal

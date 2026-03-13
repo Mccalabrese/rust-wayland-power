@@ -5,7 +5,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
-use crate::app::{EditField, RecField, InputMode, App};
+use crate::app::{EditField, RecField, InputMode, App, ViewMode};
+use chrono::Datelike;
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     // 1. Split screen: Header (Top) and Body (Bottom)
@@ -25,30 +26,103 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     
     f.render_widget(header, chunks[0]);
 
-    // 3. Render Body (The Appointment List)
-    let events = app.engine.get_appointments_on_day(app.current_date);
-    
-    let items: Vec<ListItem> = if events.is_empty() {
-        vec![ListItem::new(Line::from(Span::styled(
-            "No appointments today.",
-            Style::default().fg(Color::DarkGray),
-        )))]
+    // 3. Render Body (Day View vs Week View)
+    if app.view_mode == ViewMode::Day {
+        // --- EXISTING DAY VIEW ---
+        let events = app.engine.get_appointments_on_day(app.current_date);
+        let items: Vec<ListItem> = if events.is_empty() {
+            vec![ListItem::new(Line::from(Span::styled("No appointments.", Style::default().fg(Color::DarkGray))))]
+        } else {
+            events.iter().map(|evt| {
+                let time_str = evt.start.format("%H:%M").to_string();
+                ListItem::new(Line::from(format!("{} - {}", time_str, evt.summary)))
+            }).collect()
+        };
+
+        let events_list = List::new(items)
+            .block(Block::default().title(" Agenda ").borders(Borders::ALL))
+            .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+            .highlight_symbol(">> ");
+
+        f.render_stateful_widget(events_list, chunks[1], &mut app.list_state);
+
     } else {
-        events.iter().map(|evt| {
-            // Format: "17:00 - Rust Coding Class"
-            let time_str = evt.start.format("%H:%M").to_string();
-            let content = format!("{} - {} (ID: {})", time_str, evt.summary, evt.id);
-            ListItem::new(Line::from(content))
-        }).collect()
-    };
+        // --- NEW RESPONSIVE WEEK VIEW ---
+        // 1. Media Query: Is the terminal wide enough for 7 vertical columns?
+        let is_wide = chunks[1].width > 100;
 
-    let events_list = List::new(items)
-        .block(Block::default().title(" Agenda ").borders(Borders::ALL))
-        .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
-        .highlight_symbol(">> ");
+        // 2. Split into Calendar (Top 80%) and Details Pane (Bottom 20%)
+        let week_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+            .split(chunks[1]);
 
-    f.render_stateful_widget(events_list, chunks[1], &mut app.list_state);
+        // 3. Slice the Calendar area into 7 equal blocks
+        let day_chunks = Layout::default()
+            .direction(if is_wide { Direction::Horizontal } else { Direction::Vertical })
+            .constraints([
+                Constraint::Ratio(1, 7), Constraint::Ratio(1, 7), Constraint::Ratio(1, 7),
+                Constraint::Ratio(1, 7), Constraint::Ratio(1, 7), Constraint::Ratio(1, 7), Constraint::Ratio(1, 7),
+            ])
+            .split(week_chunks[0]);
 
+        // 4. Find the Monday of the current week
+        let days_from_mon = app.current_date.weekday().num_days_from_monday();
+        let monday = app.current_date - chrono::Duration::days(days_from_mon as i64);
+
+        let day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        let mut details_text = String::from(" Select an event to view details...");
+
+        // 5. Draw the 7 days
+        for i in 0..7 {
+            let current_loop_day = monday + chrono::Duration::days(i);
+            let events = app.engine.get_appointments_on_day(current_loop_day);
+            
+            // Is this the column our cursor is currently inside?
+            let is_active_column = i as u32 == days_from_mon;
+            let border_color = if is_active_column { Color::Yellow } else { Color::Reset };
+
+            // Build the list items for this specific day
+            let items: Vec<ListItem> = events.iter().map(|evt| {
+                let time_str = evt.start.format("%H:%M").to_string();
+                ListItem::new(Line::from(format!("{} {}", time_str, evt.summary)))
+            }).collect();
+
+            let mut list_widget = List::new(items)
+                .block(Block::default()
+                    .title(format!(" {} {} ", day_names[i as usize], current_loop_day.format("%m/%d")))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(border_color))); // Yellow border if active!
+
+            // If this is the active column, render it with the stateful cursor
+            if is_active_column {
+                list_widget = list_widget
+                    .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD))
+                    .highlight_symbol(">");
+                
+                f.render_stateful_widget(list_widget, day_chunks[i as usize], &mut app.list_state);
+                
+                // Grab data for the details pane!
+                if let Some(idx) = app.list_state.selected() {
+                    if idx < events.len() {
+                        let evt = events[idx];
+                        let dur = evt.duration.num_minutes();
+                        details_text = format!(" Event: {}\n Time:  {}\n Dur:   {}h {}m\n ID:    {}", 
+                            evt.summary, evt.start.format("%A, %B %e at %H:%M"), dur / 60, dur % 60, evt.id);
+                    }
+                }
+            } else {
+                // Not active, just render it statically
+                f.render_widget(list_widget, day_chunks[i as usize]);
+            }
+        }
+
+        // 6. Render the Details Pane at the bottom
+        let details_block = Paragraph::new(details_text)
+            .style(Style::default().fg(Color::Cyan))
+            .block(Block::default().borders(Borders::ALL).title(" Details "));
+        f.render_widget(details_block, week_chunks[1]);
+    }
     // 4. Render Popup (If Editing)
     if app.input_mode == InputMode::Editing {
         let area = centered_rect(60, 80, f.area());
