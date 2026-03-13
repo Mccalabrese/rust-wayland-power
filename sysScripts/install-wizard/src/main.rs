@@ -1186,7 +1186,7 @@ fn finalize_setup() {
         }
     }
 }
-// Installs the battery life warning and exectes systemctl poweroff to protect battery
+/// Installs the battery life warning and exectes systemctl poweroff to protect battery
 fn setup_battery_daemon() {
     println!("   🔋 Configuring Battery Safety Daemon...");
     
