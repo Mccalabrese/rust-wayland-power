@@ -38,6 +38,7 @@ const RUST_APPS: &[&str] = &[
     "cloudflare-toggle", "wallpaper-manager", "kb-launcher", "updater",
     "sidebar", "rfkill-manager", "clip-manager", "emoji-picker",
     "radio-menu", "waybar-finance", "cal-tui", "battery-daemon",
+    "install-wizard",
 ];
 
 // Hardware Specific: NVIDIA
