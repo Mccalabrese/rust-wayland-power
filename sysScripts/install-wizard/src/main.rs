@@ -990,7 +990,6 @@ file = "~/.config/nvim/keybinds_nvim.txt"
             std::process::exit(1);
         }
     }
-    println!("   ✅ Config generated at {:?}", config_path);
 }
 /// Builds custom Rust apps using native caching. 
 /// If source files haven't changed, this takes milliseconds.
