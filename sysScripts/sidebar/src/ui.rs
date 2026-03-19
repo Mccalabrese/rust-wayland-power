@@ -301,17 +301,37 @@ pub fn build_ui(app: &Application) {
 
     refresh_grid(); // Initial Draw
 
+    let shift_month = |date: chrono::NaiveDate, delta: i32| -> chrono::NaiveDate {
+        let mut year = date.year();
+        let mut month = date.month() as i32 + delta;
+
+        while month < 1 {
+            month += 12;
+            year -= 1;
+        }
+        while month > 12 {
+            month -= 12;
+            year += 1;
+        }
+
+        let target_month = month as u32;
+        let mut day = date.day();
+        while day > 1 {
+            if let Some(valid_date) = chrono::NaiveDate::from_ymd_opt(year, target_month, day) {
+                return valid_date;
+            }
+            day -= 1;
+        }
+
+        chrono::NaiveDate::from_ymd_opt(year, target_month, 1).unwrap_or(date)
+    };
+
     // Calendar Navigation Handlers
     let view_date_prev = current_view_date.clone();
     let refresh_prev = refresh_grid.clone();
     btn_prev.connect_clicked(move |_| {
-        let mut d = *view_date_prev.borrow();
-        // Handle year rollback
-        if d.month() == 1 {
-            d = d.with_month(12).unwrap().with_year(d.year() - 1).unwrap();
-        } else {
-            d = d.with_month(d.month() - 1).unwrap();
-        }
+        let d = *view_date_prev.borrow();
+        let d = shift_month(d, -1);
         *view_date_prev.borrow_mut() = d;
         refresh_prev();
     });
@@ -319,39 +339,117 @@ pub fn build_ui(app: &Application) {
     let view_date_next = current_view_date.clone();
     let refresh_next = refresh_grid.clone();
     btn_next.connect_clicked(move |_| {
-        let mut d = *view_date_next.borrow();
-        // Handle year rollover
-        if d.month() == 12 {
-            d = d.with_month(1).unwrap().with_year(d.year() + 1).unwrap();
-        } else {
-            d = d.with_month(d.month() + 1).unwrap();
-        }
+        let d = *view_date_next.borrow();
+        let d = shift_month(d, 1);
         *view_date_next.borrow_mut() = d;
         refresh_next();
     });
 
     main_stack.add_titled(&month_view_box, Some("month_view"), "Month");
 
-    // View B: Day View (Agenda placeholder)
+    // View B: Day View (real appointments from cal-tui storage)
     let day_view_box = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
     day_view_box.set_margin_top(20);
     day_view_box.set_margin_start(10);
 
-    let now = Local::now();
-    let day_title = gtk4::Label::builder()
-        .label(format!("Agenda: {}", now.format("%A, %d %b")))
-        .css_classes(vec!["finance-text".to_string()])
-        .halign(gtk4::Align::Start)
+    let day_nav = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let btn_day_prev = gtk4::Button::builder()
+        .icon_name("go-previous-symbolic")
+        .css_classes(vec!["flat".to_string()])
         .build();
-        
-    let no_appt_label = gtk4::Label::builder()
-        .label("No appointments scheduled.")
-        .css_classes(vec!["hint-text".to_string()])
-        .halign(gtk4::Align::Start)
+    let btn_day_next = gtk4::Button::builder()
+        .icon_name("go-next-symbolic")
+        .css_classes(vec!["flat".to_string()])
         .build();
 
-    day_view_box.append(&day_title);
-    day_view_box.append(&no_appt_label);
+    let day_title = gtk4::Label::builder()
+        .label("Agenda")
+        .css_classes(vec!["finance-text".to_string()])
+        .halign(gtk4::Align::Start)
+        .hexpand(true)
+        .build();
+    day_nav.append(&btn_day_prev);
+    day_nav.append(&day_title);
+    day_nav.append(&btn_day_next);
+
+    let agenda_list = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+
+    let day_state = current_view_date.clone();
+    let day_title_clone = day_title.clone();
+    let agenda_list_clone = agenda_list.clone();
+    let refresh_day_view: Rc<dyn Fn()> = Rc::new(move || {
+        let date = *day_state.borrow();
+        day_title_clone.set_label(&format!("Agenda: {}", date.format("%A, %d %b")));
+
+        while let Some(child) = agenda_list_clone.first_child() {
+            agenda_list_clone.remove(&child);
+        }
+
+        let appointments = helpers::get_day_appointments(date);
+        if appointments.is_empty() {
+            let empty = gtk4::Label::builder()
+                .label("No appointments scheduled.")
+                .css_classes(vec!["hint-text".to_string()])
+                .halign(gtk4::Align::Start)
+                .build();
+            agenda_list_clone.append(&empty);
+            return;
+        }
+
+        for appt in appointments.into_iter().take(8) {
+            let text = format!(
+                "{}  {} ({}m)",
+                appt.time,
+                appt.summary,
+                appt.duration_minutes
+            );
+            let button = gtk4::Button::builder()
+                .label(&text)
+                .halign(gtk4::Align::Fill)
+                .css_classes(vec!["flat".to_string()])
+                .tooltip_text("Open in cal-tui")
+                .build();
+
+            let date_copy = date;
+            button.connect_clicked(move |_| {
+                helpers::run_cmd(&format!(
+                    "ghostty --title=calendar-tui -e $HOME/.cargo/bin/cal-tui --date {}-{}-{} --select-id {}",
+                    date_copy.year(),
+                    date_copy.month(),
+                    date_copy.day(),
+                    appt.id
+                ));
+            });
+            agenda_list_clone.append(&button);
+        }
+    });
+
+    refresh_day_view();
+
+    let day_prev_state = current_view_date.clone();
+    let day_prev_refresh = refresh_day_view.clone();
+    btn_day_prev.connect_clicked(move |_| {
+        let current = *day_prev_state.borrow();
+        *day_prev_state.borrow_mut() = current - chrono::Duration::days(1);
+        day_prev_refresh();
+    });
+
+    let day_next_state = current_view_date.clone();
+    let day_next_refresh = refresh_day_view.clone();
+    btn_day_next.connect_clicked(move |_| {
+        let current = *day_next_state.borrow();
+        *day_next_state.borrow_mut() = current + chrono::Duration::days(1);
+        day_next_refresh();
+    });
+
+    let day_refresh_from_month_prev = refresh_day_view.clone();
+    btn_prev.connect_clicked(move |_| day_refresh_from_month_prev());
+
+    let day_refresh_from_month_next = refresh_day_view.clone();
+    btn_next.connect_clicked(move |_| day_refresh_from_month_next());
+
+    day_view_box.append(&day_nav);
+    day_view_box.append(&agenda_list);
     main_stack.add_titled(&day_view_box, Some("day_view"), "Day");
 
     bottom_box.append(&stack_switcher);

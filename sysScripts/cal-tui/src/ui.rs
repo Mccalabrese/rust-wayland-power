@@ -258,10 +258,16 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
     // 6. Render the Footer Keyhints
     // Match the text to whatever the user is currently doing
-    let hint_text = match app.input_mode {
-        InputMode::Normal => " [q]uit | [a]dd | [d]elete | [v]iew day/week | [←/→] change day | [↑/↓] select ",
+    let base_hint = match app.input_mode {
+        InputMode::Normal => " [q]uit | [a]dd | [d]elete | [v]iew | [t]oday | [h/l or ←/→] day | [j/k or ↑/↓] select | [?] help ",
         InputMode::Editing => " [Tab] next field | [Space] toggle | [↑/↓] adjust time | [Enter] save/next | [Esc] cancel ",
         InputMode::EditingRecurrence => " [Tab] move | [Space] check | [↑/↓] weeks | [Enter] save | [Esc] cancel ",
+    };
+
+    let hint_text = if let Some(msg) = &app.status_message {
+        format!("{}   |   {}", base_hint, msg)
+    } else {
+        base_hint.to_string()
     };
 
     // A clean, reversed-color look is standard for TUI status bars
@@ -270,6 +276,17 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // Render it into that 3rd chunk we created at the top
     f.render_widget(footer, chunks[2]);
+
+    if app.show_help {
+        let area = centered_rect(74, 60, f.area());
+        f.render_widget(ratatui::widgets::Clear, area);
+        let help = Paragraph::new(
+            "Quick Help\n\nq: quit\na: add appointment\nd: delete selected appointment\nv: switch day/week view\nt: jump to today\nLeft/Right or h/l: move day\nUp/Down or j/k: move selection\n?: toggle this help\n\nIn Add Mode\nTab: next field\nSpace: toggle checkbox\nUp/Down: adjust time and duration\nEnter: save\nEsc: cancel"
+        )
+        .style(Style::default().fg(Color::Cyan))
+        .block(Block::default().borders(Borders::ALL).title(" Help "));
+        f.render_widget(help, area);
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

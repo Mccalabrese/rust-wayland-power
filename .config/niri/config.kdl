@@ -185,6 +185,11 @@ window-rule {
     open-floating true
 }
 
+window-rule {
+  match title=r#"(?i).*bitwarden.*"#
+  open-floating true
+}
+
 cursor {
     xcursor-theme "Adwaita"
     xcursor-size 24

@@ -11,7 +11,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use app::{App, InputMode, EditField, RecField};
-use chrono::{Duration, NaiveTime, Weekday}; // For moving days
+use chrono::{Datelike, Duration, Weekday}; // For moving days
 use crate::app::ViewMode;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,14 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match args[i].as_str() {
             "--date" => {
                 if i + 1 < args.len() {
-                    // Split "2026-3-12" into parts
-                    let parts: Vec<&str> = args[i + 1].split('-').collect();
-                    if parts.len() == 3 {
-                        if let (Ok(y), Ok(m), Ok(d)) = (parts[0].parse::<i32>(), parts[1].parse::<u32>(), parts[2].parse::<u32>()) {
-                            if let Some(date) = chrono::NaiveDate::from_ymd_opt(y, m, d) {
-                                app.current_date = date; // Instantly jump to this day!
-                            }
-                        }
+                    if let Ok(date) = chrono::NaiveDate::parse_from_str(&args[i + 1], "%Y-%m-%d") {
+                        app.current_date = date;
                     }
                     i += 1;
                 }
@@ -95,9 +89,17 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             if key.kind == event::KeyEventKind::Press {
                 match app.input_mode {
                     InputMode::Normal => match key.code {
+                        KeyCode::Char('?') => {
+                            app.show_help = !app.show_help;
+                        }
                         KeyCode::Char('q') => {
                             app.quit();
                             return Ok(());
+                        }
+                        KeyCode::Char('t') => {
+                            app.current_date = chrono::Utc::now().date_naive();
+                            app.list_state.select(None);
+                            app.set_status("Jumped to today");
                         }
                         KeyCode::Char('v') => {
                             app.view_mode = if app.view_mode == ViewMode::Day {
@@ -111,9 +113,17 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             app.current_date = app.current_date + Duration::days(1);
                             app.list_state.select(None); // Clear selection on day change
                         }
+                        KeyCode::Char('l') => {
+                            app.current_date = app.current_date + Duration::days(1);
+                            app.list_state.select(None);
+                        }
                         KeyCode::Left => {
                             app.current_date = app.current_date - Duration::days(1);
                             app.list_state.select(None); // Clear selection on day change
+                        }
+                        KeyCode::Char('h') => {
+                            app.current_date = app.current_date - Duration::days(1);
+                            app.list_state.select(None);
                         }
                         KeyCode::Char('a') => {
                             app.input_mode = InputMode::Editing;
@@ -131,6 +141,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.list_state.select(Some(i));
                             }
                         }
+                        KeyCode::Char('j') => {
+                            let events = app.engine.get_appointments_on_day(app.current_date);
+                            if !events.is_empty() {
+                                let i = match app.list_state.selected() {
+                                    Some(i) => if i >= events.len() - 1 { 0 } else { i + 1 },
+                                    None => 0,
+                                };
+                                app.list_state.select(Some(i));
+                            }
+                        }
                     
                         // NEW: Scroll Up
                         KeyCode::Up => {
@@ -138,6 +158,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             if !events.is_empty() {
                                 let i = match app.list_state.selected() {
                                     Some(i) => if i == 0 { events.len() - 1 } else { i - 1 }, // Loop to bottom
+                                    None => 0,
+                                };
+                                app.list_state.select(Some(i));
+                            }
+                        }
+                        KeyCode::Char('k') => {
+                            let events = app.engine.get_appointments_on_day(app.current_date);
+                            if !events.is_empty() {
+                                let i = match app.list_state.selected() {
+                                    Some(i) => if i == 0 { events.len() - 1 } else { i - 1 },
                                     None => 0,
                                 };
                                 app.list_state.select(Some(i));
@@ -156,6 +186,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     drop(events);
                                     app.engine.remove_appointment(id_to_remove); // Delete it from memory
                                     app.save(); // Save to disk immediately
+                                    app.set_status("Appointment deleted");
                                 
                                     // Adjust the cursor so it doesn't fall off the screen
                                     if selected_idx > 0 {
@@ -217,7 +248,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     // Save as a Singular Event
                                     let hours = app.time_minutes / 60;
                                     let mins = app.time_minutes % 60;
-                                    let parsed_time = chrono::NaiveTime::from_hms_opt(hours, mins, 0).unwrap();
+                                    let Some(parsed_time) = chrono::NaiveTime::from_hms_opt(hours, mins, 0) else {
+                                        app.set_status("Invalid start time");
+                                        continue;
+                                    };
                                     let start_time = app.current_date.and_time(parsed_time).and_utc();
                                     let duration = chrono::Duration::minutes(app.duration_minutes as i64);
 
@@ -232,6 +266,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 
                                     app.engine.add_appointment(new_app);
                                     app.save();
+                                    app.set_status("Appointment saved");
 
                                     app.reset_form();
                                     app.input_mode = InputMode::Normal;
@@ -305,7 +340,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             // 1. Calculate base start time & duration (same as normal mode)
                             let hours = app.time_minutes / 60;
                             let mins = app.time_minutes % 60;
-                            let parsed_time = chrono::NaiveTime::from_hms_opt(hours, mins, 0).unwrap();
+                            let Some(parsed_time) = chrono::NaiveTime::from_hms_opt(hours, mins, 0) else {
+                                app.set_status("Invalid start time");
+                                continue;
+                            };
                             let start_time = app.current_date.and_time(parsed_time).and_utc();
                             let duration = chrono::Duration::minutes(app.duration_minutes as i64);
 
@@ -316,6 +354,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 if app.rec_days[i] {
                                     active_days.push(all_days[i]);
                                 }
+                            }
+
+                            if active_days.is_empty() {
+                                active_days.push(start_time.weekday());
+                                app.set_status("No recurrence days selected; defaulted to start weekday");
                             }
 
                             // 3. Calculate End Date (if checked)
@@ -340,6 +383,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 
                             app.engine.add_appointment(new_app);
                             app.save();
+                            app.set_status("Recurring appointment saved");
 
                             app.reset_form();
                             app.input_mode = InputMode::Normal;

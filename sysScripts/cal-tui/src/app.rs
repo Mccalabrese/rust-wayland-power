@@ -1,6 +1,5 @@
 use chrono::{NaiveDate, Utc};
 use crate::engine::CalendarEngine;
-use std::path::PathBuf;
 use std::fs;
 use directories::ProjectDirs;
 use ratatui::widgets::ListState;
@@ -49,6 +48,9 @@ pub struct App {
     pub rec_days: [bool; 7],
     pub rec_end_date: bool,
     pub rec_end_weeks: u32,
+
+    pub show_help: bool,
+    pub status_message: Option<String>,
 }
 
 impl App {
@@ -88,6 +90,8 @@ impl App {
             rec_days: [false; 7],
             rec_end_date: false,
             rec_end_weeks: 16, // Default to a standard 16-week semester
+            show_help: false,
+            status_message: None,
         }
     }
 
@@ -109,6 +113,10 @@ impl App {
         self.rec_days = [false; 7];
         self.rec_end_date = false;
         self.rec_end_weeks = 16;
+    }
+
+    pub fn set_status<S: Into<String>>(&mut self, message: S) {
+        self.status_message = Some(message.into());
     }
 
     pub fn on_tick(&mut self) {

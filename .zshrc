@@ -128,3 +128,4 @@ if [[ -o interactive ]]; then
         fastfetch
     fi
 fi
+export PATH=$HOME/quick-start/rtems/7/bin:$PATH
