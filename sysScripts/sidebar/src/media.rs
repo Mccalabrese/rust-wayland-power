@@ -63,12 +63,12 @@ pub fn build() -> Box {
     // These buttons simply fire-and-forget commands to playerctl.
     // We rely on the polling loop to update the UI state (e.g. changing Pause to Play icon).
 
-    btn_prev.connect_clicked(|_| { helpers::run_cmd("playerctl previous"); });
-    btn_next.connect_clicked(|_| { helpers::run_cmd("playerctl next"); });
+    btn_prev.connect_clicked(|_| { helpers::run_command("playerctl", &["previous"]); });
+    btn_next.connect_clicked(|_| { helpers::run_command("playerctl", &["next"]); });
     
     let btn_play_clone = btn_play.clone();
     btn_play.connect_clicked(move |_| { 
-        helpers::run_cmd("playerctl play-pause");
+        helpers::run_command("playerctl", &["play-pause"]);
         // Note: We don't manually change the icon here. 
         // We let the next poll cycle (max 1s delay) detect the state change.
         // This prevents the UI from getting out of sync if the command fails.

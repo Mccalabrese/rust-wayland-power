@@ -178,7 +178,8 @@ pub fn build_ui(app: &Application) {
     scale_brightness.connect_value_changed(move |s| {
         let val = s.value() as i32;
         *last_interaction_b.borrow_mut() = std::time::Instant::now();
-        helpers::run_cmd(&format!("brightnessctl s {}%", val));
+        let level = format!("{}%", val);
+        helpers::run_command("brightnessctl", &["s", level.as_str()]);
     });
 
     // VOLUME HANDLER
@@ -186,7 +187,8 @@ pub fn build_ui(app: &Application) {
     scale_volume.connect_value_changed(move |s| {
         let val = s.value() / 100.0; 
         *last_interaction_v.borrow_mut() = std::time::Instant::now();
-        helpers::run_cmd(&format!("wpctl set-volume @DEFAULT_AUDIO_SINK@ {}", val));
+        let level = val.to_string();
+        helpers::run_command("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", level.as_str()]);
     });
 
     top_box.append(&row_session);
@@ -412,13 +414,13 @@ pub fn build_ui(app: &Application) {
 
             let date_copy = date;
             button.connect_clicked(move |_| {
-                helpers::run_cmd(&format!(
-                    "ghostty --title=calendar-tui -e $HOME/.cargo/bin/cal-tui --date {}-{}-{} --select-id {}",
-                    date_copy.year(),
-                    date_copy.month(),
-                    date_copy.day(),
-                    appt.id
-                ));
+                let date_arg = format!("{}-{}-{}", date_copy.year(), date_copy.month(), date_copy.day());
+                let id_arg = appt.id.to_string();
+                helpers::run_in_ghostty(
+                    "calendar-tui",
+                    "cal-tui",
+                    &["--date", date_arg.as_str(), "--select-id", id_arg.as_str()],
+                );
             });
             agenda_list_clone.append(&button);
         }
@@ -471,30 +473,41 @@ pub fn build_ui(app: &Application) {
     // --- BUTTON EVENT HANDLERS ---
     //
     // Power Management
-    btn_power.connect_clicked(move |_| helpers::run_cmd("systemctl poweroff"));
-    btn_restart.connect_clicked(move |_| helpers::run_cmd("systemctl reboot"));
+    btn_power.connect_clicked(move |_| helpers::run_command("systemctl", &["poweroff"]));
+    btn_restart.connect_clicked(move |_| helpers::run_command("systemctl", &["reboot"]));
 
     // Smart Logout: Detects the active session to run the correct exit command
     btn_logout.connect_clicked(move |_| {
         let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_lowercase();
-        let cmd = if desktop.contains("niri") { "niri msg action quit" }
-        else if desktop.contains("sway") { "swaymsg exit" }
-        else if desktop.contains("hyprland") { "hyprctl dispatch exit" }
-        else { "loginctl terminate-user $USER" };
-        helpers::run_cmd(cmd);
+        if desktop.contains("niri") {
+            helpers::run_command("niri", &["msg", "action", "quit"]);
+        } else if desktop.contains("sway") {
+            helpers::run_command("swaymsg", &["exit"]);
+        } else if desktop.contains("hyprland") {
+            helpers::run_command("hyprctl", &["dispatch", "exit"]);
+        } else if let Ok(user) = std::env::var("USER") {
+            helpers::run_command("loginctl", &["terminate-user", user.as_str()]);
+        }
     });
 
     // Security
     btn_suspend.connect_clicked(move |_| {
-        // Ensure lock screen starts BEFORE system sleeps
-        helpers::run_cmd("pidof hyprlock >/dev/null || hyprlock & sleep 0.5; systemctl suspend");
+        if !helpers::is_process_running("hyprlock") {
+            helpers::run_command("hyprlock", &[]);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        helpers::run_command("systemctl", &["suspend"]);
     });
-    btn_lock.connect_clicked(move |_| { helpers::run_cmd(" pidof hyprlock || hyprlock &"); });
+    btn_lock.connect_clicked(move |_| {
+        if !helpers::is_process_running("hyprlock") {
+            helpers::run_command("hyprlock", &[]);
+        }
+    });
 
     // --- Idle Inhibit Persistence ---
     // Query procps-ng for the state of our idle daemons. 
     // A suspended process (SIGSTOP) will have a 'T' in its stat column.
-    let idle_check = helpers::get_stdout("ps -o stat= -C swayidle,hypridle");
+    let idle_check = helpers::get_stdout("ps", &["-o", "stat=", "-C", "swayidle,hypridle"]);
     
     // If the process exists and is stopped, visually mark the button active on boot
     if idle_check.contains('T') {
@@ -506,30 +519,32 @@ pub fn build_ui(app: &Application) {
         if btn.has_css_class("active") {
             // It's currently paused. Remove UI highlight and resume the daemon.
             btn.remove_css_class("active");
-            helpers::run_cmd("pkill -CONT hypridle || pkill -CONT swayidle");
+            helpers::run_command("pkill", &["-CONT", "hypridle"]);
+            helpers::run_command("pkill", &["-CONT", "swayidle"]);
         } else {
             // It's running normally. Add UI highlight and pause the daemon.
             btn.add_css_class("active");
-            helpers::run_cmd("pkill -STOP hypridle || pkill -STOP swayidle");
+            helpers::run_command("pkill", &["-STOP", "hypridle"]);
+            helpers::run_command("pkill", &["-STOP", "swayidle"]);
         }
     });
 
     // Launchers
-    btn_wall.connect_clicked(move |_| helpers::run_cmd("$HOME/.cargo/bin/wp-select"));
-    btn_hint.connect_clicked(move |_| helpers::run_cmd("$HOME/.cargo/bin/kb-launcher"));
-    btn_radio.connect_clicked(move |_| helpers::run_cmd("$HOME/.cargo/bin/radio-menu"));
+    btn_wall.connect_clicked(move |_| helpers::run_home_bin("wp-select", &[]));
+    btn_hint.connect_clicked(move |_| helpers::run_home_bin("kb-launcher", &[]));
+    btn_radio.connect_clicked(move |_| helpers::run_home_bin("radio-menu", &[]));
 
     // Cloudflare DNS Polling Logic
     // Toggling takes time (sudo, network restart). We poll status for 45s to update the badge.
     let btn_dns_poll = btn_dns.clone();
     btn_dns.connect_clicked(move |_| {
-        helpers::run_cmd("$HOME/.cargo/bin/cf-toggle");
+        helpers::run_home_bin("cf-toggle", &[]);
         let btn_target = btn_dns_poll.clone();
         let mut attempts = 0;
         glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
             attempts += 1;
-            if let Ok(out) = std::process::Command::new("sh").arg("-c").arg("$HOME/.cargo/bin/cf-status").output() {
-                if let Ok(json) = serde_json::from_slice::<Value>(&out.stdout) {
+            if let Some(stdout) = helpers::get_output_home_bin("cf-status", &[]) {
+                if let Ok(json) = serde_json::from_slice::<Value>(&stdout) {
                     if let Some(class) = json.get("class").and_then(|v| v.as_str()) {
                         if class == "on" { btn_target.add_css_class("active"); }
                         else { btn_target.remove_css_class("active"); }
@@ -544,7 +559,7 @@ pub fn build_ui(app: &Application) {
     // Updates run in a terminal (via updater), so we just launch it and hide the badge optimistically.
     let lbl_update_badge_clone = lbl_update_badge.clone();
     btn_update.connect_clicked(move |_| {
-        helpers::run_cmd("$HOME/.cargo/bin/updater");
+        helpers::run_home_bin("updater", &[]);
         lbl_update_badge_clone.set_visible(false);
     });
 
@@ -554,8 +569,8 @@ pub fn build_ui(app: &Application) {
     let lbl_update_target = lbl_update_badge.clone();
     std::thread::spawn(move || {
         loop {
-            if let Ok(out) = std::process::Command::new("sh").arg("-c").arg("$HOME/.cargo/bin/update-check").output() {
-                let _ = update_tx.send(out.stdout);
+            if let Some(stdout) = helpers::get_output_home_bin("update-check", &[]) {
+                let _ = update_tx.send(stdout);
             }
             std::thread::sleep(std::time::Duration::from_secs(1800));
         }
@@ -577,7 +592,7 @@ pub fn build_ui(app: &Application) {
     // Airplane Mode (Optimistic UI)
     let btn_air_clone = btn_air.clone();
     btn_air.connect_clicked(move |_| {
-        helpers::run_cmd("$HOME/.cargo/bin/rfkill-manager --toggle");
+        helpers::run_home_bin("rfkill-manager", &["--toggle"]);
         if btn_air_clone.has_css_class("active") { btn_air_clone.remove_css_class("active"); }
         else { btn_air_clone.add_css_class("active"); }
     });
@@ -585,7 +600,7 @@ pub fn build_ui(app: &Application) {
     // Audio Mute (Optimistic UI)
     let btn_mute_clone = btn_mute.clone();
     btn_mute.connect_clicked(move |_| {
-        helpers::run_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle");
+        helpers::run_command("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]);
         if btn_mute_clone.has_css_class("active") { btn_mute_clone.remove_css_class("active"); }
         else { btn_mute_clone.add_css_class("active"); }
     });
@@ -593,19 +608,19 @@ pub fn build_ui(app: &Application) {
     // Finance Widget (Background Thread)
     // Runs the external fetcher script and pipes JSON back to the UI.
     click_gesture.connect_pressed(move |_, _, _, _| {
-        helpers::run_cmd("ghostty --title=waybar-finance -e $HOME/.cargo/bin/waybar-finance --tui");
+        helpers::run_in_ghostty("waybar-finance", "waybar-finance", &["--tui"]);
     });
 
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let output = std::process::Command::new("sh").arg("-c").arg("$HOME/.cargo/bin/waybar-finance").output();
+        let output = helpers::get_output_home_bin("waybar-finance", &[]);
         let _ = sender.send(output);
     });
 
     let finance_label_update = finance_label.clone();
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        if let Ok(Ok(out)) = receiver.try_recv() {
-            if let Ok(json) = serde_json::from_slice::<Value>(&out.stdout) {
+        if let Ok(Some(stdout)) = receiver.try_recv() {
+            if let Ok(json) = serde_json::from_slice::<Value>(&stdout) {
                 if let Some(text) = json.get("text").and_then(|v| v.as_str()) {
                     // Manual HTML/Pango parsing to format the grid 
                     // (The API returns raw HTML spans, we need to insert newlines every 4 items)
@@ -641,9 +656,9 @@ pub fn build_ui(app: &Application) {
 
     let (status_tx, status_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let dns_o = std::process::Command::new("sh").arg("-c").arg("$HOME/.cargo/bin/cf-status").output().ok();
+        let dns_o = helpers::get_output_home_bin("cf-status", &[]);
         let air_o = std::process::Command::new("rfkill").arg("list").arg("wlan").output().ok();
-        let mute_o = std::process::Command::new("sh").arg("-c").arg("wpctl get-volume @DEFAULT_AUDIO_SINK@").output().ok();
+        let mute_o = helpers::get_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]);
         let bright_o = std::process::Command::new("brightnessctl").arg("i").arg("-m").output().ok();
         let _ = status_tx.send((dns_o, air_o, mute_o, bright_o));
     });
@@ -652,7 +667,7 @@ pub fn build_ui(app: &Application) {
         if let Ok((dns_o, air_o, mute_o, bright_o)) = status_rx.try_recv() {
             // Apply DNS State
             if let Some(out) = dns_o {
-                if let Ok(json) = serde_json::from_slice::<Value>(&out.stdout) {
+                if let Ok(json) = serde_json::from_slice::<Value>(&out) {
                     if json.get("class").and_then(|v| v.as_str()) == Some("on") { btn_dns_load.add_css_class("active"); }
                 }
             }
@@ -662,7 +677,7 @@ pub fn build_ui(app: &Application) {
             }
             // Apply Mute/Volume State
             if let Some(out) = mute_o {
-                let s = String::from_utf8_lossy(&out.stdout);
+                let s = String::from_utf8_lossy(&out);
                 if s.contains("[MUTED]") { btn_mute_load.add_css_class("active"); }
                 if let Some(vol_str) = s.split_whitespace().nth(1) {
                     if let Ok(vol) = vol_str.parse::<f64>() { scale_vol_load.set_value(vol * 100.0); }
@@ -706,8 +721,8 @@ pub fn build_ui(app: &Application) {
                 }
             }
             // Check Volume
-            if let Ok(out) = std::process::Command::new("sh").arg("-c").arg("wpctl get-volume @DEFAULT_AUDIO_SINK@").output() {
-                if let Some(vol_str) = String::from_utf8_lossy(&out.stdout).split_whitespace().nth(1) {
+            if let Some(out) = helpers::get_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]) {
+                if let Some(vol_str) = String::from_utf8_lossy(&out).split_whitespace().nth(1) {
                     if let Ok(vol_float) = vol_str.parse::<f64>() {
                         let sys_val = vol_float * 100.0;
                         if (sv_inner.value() - sys_val).abs() > 1.0 { sv_inner.set_value(sys_val); }

@@ -8,6 +8,7 @@ use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc, Weekday};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Debug, Deserialize, Clone)]
 struct StorageData {
@@ -302,8 +303,12 @@ pub fn build_calendar_grid(year: i32, month: u32) -> gtk4::Grid {
         // Click Action: Launch Calendar TUI focused on this date
         btn.connect_clicked(move |_| {
             println!("Clicked Date: {}/{}/{}", year, month, day_num);
-            let cmd = format!("ghostty --title=calendar-tui -e $HOME/.cargo/bin/cal-tui --date {}-{}-{}", year, month, day_num);
-            run_cmd(&cmd);
+            let date_arg = format!("{}-{}-{}", year, month, day_num);
+            run_in_ghostty(
+                "calendar-tui",
+                "cal-tui",
+                &["--date", date_arg.as_str()],
+            );
         });
 
         grid.attach(&btn, col, row, 1, 1);
@@ -344,29 +349,71 @@ pub fn make_slider_row(icon_name: &str) -> (gtk4::Box, gtk4::Scale) {
 
 // --- System Utilities ---
 
-/// Fires a shell command asynchronously (fire-and-forget).
-/// Uses `spawn()` instead of `output()` to avoid blocking the UI thread.
-pub fn run_cmd(cmd: &str) {
-    let _ = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
+fn cargo_bin_path(bin_name: &str) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".cargo/bin").join(bin_name))
+}
+
+pub fn run_command(program: &str, args: &[&str]) {
+    let _ = Command::new(program)
+        .args(args)
         .spawn();
 }
-/// Executes a shell command and returns its trimmed stdout.
-/// Handles both simple commands (e.g., "hostname") and complex piped commands (e.g., "sh -c ...").
-/// Returns "N/A" on failure instead of panicking to keep the UI stable.
-pub fn get_stdout(cmd: &str) -> String {
-    let output = if cmd.contains('\'') {
-        // Handle complex piped commands by invoking the shell directly
-        std::process::Command::new("sh").arg("-c").arg(cmd).output()
-    } else {
-        // Handle simple commands directly (cleaner process tree)
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        std::process::Command::new(parts[0]).args(&parts[1..]).output()
+
+pub fn run_home_bin(bin_name: &str, args: &[&str]) {
+    if let Some(path) = cargo_bin_path(bin_name) {
+        let _ = Command::new(path).args(args).spawn();
+    }
+}
+
+pub fn run_in_ghostty(title: &str, bin_name: &str, args: &[&str]) {
+    let Some(path) = cargo_bin_path(bin_name) else {
+        return;
     };
 
-    match output {
+    let mut cmd = Command::new("ghostty");
+    cmd.arg("--title").arg(title).arg("-e").arg(path);
+    for arg in args {
+        cmd.arg(arg);
+    }
+    let _ = cmd.spawn();
+}
+
+pub fn get_output(program: &str, args: &[&str]) -> Option<Vec<u8>> {
+    Command::new(program)
+        .args(args)
+        .output()
+        .ok()
+        .map(|out| out.stdout)
+}
+
+pub fn get_output_home_bin(bin_name: &str, args: &[&str]) -> Option<Vec<u8>> {
+    let path = cargo_bin_path(bin_name)?;
+    Command::new(path)
+        .args(args)
+        .output()
+        .ok()
+        .map(|out| out.stdout)
+}
+
+pub fn get_stdout(program: &str, args: &[&str]) -> String {
+    match Command::new(program).args(args).output() {
         Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
         Err(_) => "N/A".to_string(),
+    }
+}
+
+pub fn is_process_running(process_name: &str) -> bool {
+    Command::new("pidof")
+        .arg(process_name)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+pub fn pkg_count() -> String {
+    match Command::new("pacman").arg("-Q").output() {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).lines().count().to_string(),
+        _ => "N/A".to_string(),
     }
 }

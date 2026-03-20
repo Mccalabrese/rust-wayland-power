@@ -28,8 +28,8 @@ pub fn build() -> Box {
     // during a session (except uptime, but rough accuracy is fine here).
     // This approach consumes zero CPU after the initial load.
 
-    let host = get_stdout("hostname");
-    let kernel = get_stdout("uname -r");
+    let host = get_stdout("hostname", &[]);
+    let kernel = get_stdout("uname", &["-r"]);
 
     // Shell detection: Safe unwrap with fallbacks
     let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "Unknown".to_string());
@@ -39,11 +39,11 @@ pub fn build() -> Box {
     let wm = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_else(|_| "Wayland".to_string());
     
     // Package Count: Piped command requires execution via 'sh -c'
-    let pkgs = get_stdout("sh -c 'pacman -Q | wc -l'");
+    let pkgs = crate::helpers::pkg_count();
     
     // Uptime: 'uptime -p' gives a human-readable string (e.g., "up 2 hours, 10 minutes")
     // We strip the "up " prefix for cleaner UI.
-    let uptime = get_stdout("uptime -p").replace("up ", "");
+    let uptime = get_stdout("uptime", &["-p"]).replace("up ", "");
 
     // 3. Layout Construction
     // Define the data model as a vector of tuples: (Icon + Label, Value)
