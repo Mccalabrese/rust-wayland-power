@@ -1,14 +1,16 @@
-//! Shared UI Utilities (helpers)
-//!
-//! A collection of factory functions to create consistent UI elements (Buttons, Sliders, Badges)
-//! and handle command execution. This reduces boilerplate in `ui.rs`.
+//! Shared helper utilities for sidebar widgets and command execution.
 
 use gtk4::prelude::*;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc, Weekday};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration as StdDuration;
+use wait_timeout::ChildExt;
 
 #[derive(Debug, Deserialize, Clone)]
 struct StorageData {
@@ -354,66 +356,206 @@ fn cargo_bin_path(bin_name: &str) -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".cargo/bin").join(bin_name))
 }
 
+fn resolve_program(program: &str) -> String {
+    if program.contains('/') {
+        return program.to_string();
+    }
+
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(program);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    for dir in ["/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
+        let candidate = Path::new(dir).join(program);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
+
+    program.to_string()
+}
+
+// Shared command policy for external tools invoked by the sidebar.
+const CMD_TIMEOUT_MS: u64 = 5000;
+const CMD_RETRIES: usize = 2;
+const RETRY_BACKOFF_MS: u64 = 120;
+
+fn telemetry_path() -> PathBuf {
+    if let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return PathBuf::from(runtime).join("sidebar-telemetry.log");
+    }
+    PathBuf::from("/tmp/sidebar-telemetry.log")
+}
+
+fn log_command_failure(kind: &str, program: &str, args: &[&str], detail: &str) {
+    let ts = Local::now().to_rfc3339();
+    let arg_str = if args.is_empty() {
+        "".to_string()
+    } else {
+        args.join(" ")
+    };
+
+    let line = format!(
+        "{} | {} | {} {} | {}\n",
+        ts, kind, program, arg_str, detail
+    );
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(telemetry_path())
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+fn run_output_with_retry(program: &str, args: &[&str]) -> Option<std::process::Output> {
+    let timeout = StdDuration::from_millis(CMD_TIMEOUT_MS);
+    let resolved_program = resolve_program(program);
+
+    for attempt in 1..=(CMD_RETRIES + 1) {
+        let mut child = match Command::new(&resolved_program)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                log_command_failure(
+                    "spawn_failed",
+                    &resolved_program,
+                    args,
+                    &format!("attempt={} error={}", attempt, e),
+                );
+                if attempt <= CMD_RETRIES {
+                    std::thread::sleep(StdDuration::from_millis(RETRY_BACKOFF_MS * attempt as u64));
+                    continue;
+                }
+                return None;
+            }
+        };
+
+        // wait_timeout prevents command hangs from stalling call sites indefinitely.
+        match child.wait_timeout(timeout) {
+            Ok(Some(_)) => match child.wait_with_output() {
+                Ok(output) if output.status.success() => return Some(output),
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr).replace('\n', " ");
+                    log_command_failure(
+                        "non_zero_exit",
+                        &resolved_program,
+                        args,
+                        &format!("attempt={} status={:?} stderr={}", attempt, output.status.code(), stderr),
+                    );
+                    return None;
+                }
+                Err(e) => {
+                    log_command_failure(
+                        "wait_output_failed",
+                        &resolved_program,
+                        args,
+                        &format!("attempt={} error={}", attempt, e),
+                    );
+                }
+            },
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                log_command_failure(
+                    "timeout",
+                    &resolved_program,
+                    args,
+                    &format!("attempt={} timeout_ms={}", attempt, CMD_TIMEOUT_MS),
+                );
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                log_command_failure(
+                    "wait_timeout_failed",
+                    &resolved_program,
+                    args,
+                    &format!("attempt={} error={}", attempt, e),
+                );
+            }
+        }
+
+        if attempt <= CMD_RETRIES {
+            std::thread::sleep(StdDuration::from_millis(RETRY_BACKOFF_MS * attempt as u64));
+        }
+    }
+
+    None
+}
+
 pub fn run_command(program: &str, args: &[&str]) {
-    let _ = Command::new(program)
-        .args(args)
-        .spawn();
+    let resolved = resolve_program(program);
+    if let Err(e) = Command::new(&resolved).args(args).spawn() {
+        log_command_failure("spawn_failed", &resolved, args, &e.to_string());
+    }
 }
 
 pub fn run_home_bin(bin_name: &str, args: &[&str]) {
     if let Some(path) = cargo_bin_path(bin_name) {
-        let _ = Command::new(path).args(args).spawn();
+        if let Err(e) = Command::new(&path).args(args).spawn() {
+            log_command_failure(
+                "spawn_failed",
+                &path.display().to_string(),
+                args,
+                &e.to_string(),
+            );
+        }
+    } else {
+        log_command_failure("missing_bin", bin_name, args, "not found in ~/.cargo/bin");
     }
 }
 
 pub fn run_in_ghostty(title: &str, bin_name: &str, args: &[&str]) {
     let Some(path) = cargo_bin_path(bin_name) else {
+        log_command_failure("missing_bin", bin_name, args, "not found in ~/.cargo/bin");
         return;
     };
 
     let mut cmd = Command::new("ghostty");
-    cmd.arg("--title").arg(title).arg("-e").arg(path);
+    cmd.arg(format!("--title={}", title)).arg("-e").arg(path);
     for arg in args {
         cmd.arg(arg);
     }
-    let _ = cmd.spawn();
+    if let Err(e) = cmd.spawn() {
+        log_command_failure("spawn_failed", "ghostty", args, &e.to_string());
+    }
 }
 
 pub fn get_output(program: &str, args: &[&str]) -> Option<Vec<u8>> {
-    Command::new(program)
-        .args(args)
-        .output()
-        .ok()
-        .map(|out| out.stdout)
+    run_output_with_retry(program, args).map(|out| out.stdout)
 }
 
 pub fn get_output_home_bin(bin_name: &str, args: &[&str]) -> Option<Vec<u8>> {
     let path = cargo_bin_path(bin_name)?;
-    Command::new(path)
-        .args(args)
-        .output()
-        .ok()
-        .map(|out| out.stdout)
+    let program = path.display().to_string();
+    run_output_with_retry(&program, args).map(|out| out.stdout)
 }
 
 pub fn get_stdout(program: &str, args: &[&str]) -> String {
-    match Command::new(program).args(args).output() {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-        Err(_) => "N/A".to_string(),
+    match run_output_with_retry(program, args) {
+        Some(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        None => "N/A".to_string(),
     }
 }
 
 pub fn is_process_running(process_name: &str) -> bool {
-    Command::new("pidof")
-        .arg(process_name)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    run_output_with_retry("pidof", &[process_name]).is_some()
 }
 
 pub fn pkg_count() -> String {
-    match Command::new("pacman").arg("-Q").output() {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).lines().count().to_string(),
+    match run_output_with_retry("pacman", &["-Q"]) {
+        Some(o) => String::from_utf8_lossy(&o.stdout).lines().count().to_string(),
         _ => "N/A".to_string(),
     }
 }
