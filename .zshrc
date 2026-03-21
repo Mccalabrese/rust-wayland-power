@@ -129,3 +129,7 @@ if [[ -o interactive ]]; then
     fi
 fi
 export PATH=$HOME/quick-start/rtems/7/bin:$PATH
+
+if [ -f ~/.secrets ]; then
+  source ~/.secrets
+fi

@@ -9,3 +9,4 @@
 /.config/waybar/swayConfig.jsonc
 /.config/waybar/niriConfig.jsonc
 .config/gtk-3.0/bookmarks
+.secrets
