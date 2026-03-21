@@ -1,14 +1,12 @@
-//! Sidebar UI Builder
+//! Sidebar window composition and wiring.
 //!
-//! Constructs the main GTK4 application window and manages the widget hierarchy.
-//! This module handles:
-//! 1. **Layer Shell Integration:** Positioning the window as an overlay attached to the active monitor.
-//! 2. **State Management:** Tracking interaction times (to prevent slider bounce) and hover state (to fix focus bugs).
-//! 3. **Async Polling:** Spawning background threads for Finance, Updates, and System Status to keep the UI responsive.
-//! 4. **Event Handling:** Bridging UI clicks to shell commands via the `helpers` module.
+//! This module builds the GTK layout, connects controls, and coordinates background
+//! polling so command I/O does not block the main loop.
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use gtk4::prelude::*;
 use gtk4::{Application, ApplicationWindow, Box, Orientation, Align};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
@@ -19,6 +17,28 @@ use crate::style;
 use crate::helpers;
 use crate::media;
 use crate::sysinfo;
+
+struct SliderSnapshot {
+    brightness: Option<f64>,
+    volume: Option<f64>,
+}
+
+// Parse brightnessctl CSV output and return percentage in [0, 100].
+fn parse_brightness_pct(out: &[u8]) -> Option<f64> {
+    String::from_utf8_lossy(out)
+        .split(',')
+        .nth(3)
+        .and_then(|p| p.replace('%', "").trim().parse::<f64>().ok())
+}
+
+// Parse wpctl output and normalize to percentage in [0, 100].
+fn parse_volume_pct(out: &[u8]) -> Option<f64> {
+    String::from_utf8_lossy(out)
+        .split_whitespace()
+        .nth(1)
+        .and_then(|v| v.parse::<f64>().ok())
+        .map(|v| v * 100.0)
+}
 
 pub fn build_ui(app: &Application) {
     // 1. Setup Window (Fixed Width)
@@ -94,7 +114,7 @@ pub fn build_ui(app: &Application) {
                 return; 
             }
 
-            // Write "Death Note" for the toggle script
+            // Marker used by the toggle script to detect a user-close event.
             let _ = std::process::Command::new("touch")
                 .arg("/tmp/sidebar_just_closed")
                 .output();
@@ -540,17 +560,34 @@ pub fn build_ui(app: &Application) {
     btn_dns.connect_clicked(move |_| {
         helpers::run_home_bin("cf-toggle", &[]);
         let btn_target = btn_dns_poll.clone();
+        // UI timer stays non-blocking; status fetches happen off-thread.
+        let (dns_tx, dns_rx) = mpsc::channel::<Option<Vec<u8>>>();
+        let dns_in_flight = Arc::new(AtomicBool::new(false));
         let mut attempts = 0;
         glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            attempts += 1;
-            if let Some(stdout) = helpers::get_output_home_bin("cf-status", &[]) {
+            if let Ok(Some(stdout)) = dns_rx.try_recv() {
                 if let Ok(json) = serde_json::from_slice::<Value>(&stdout) {
                     if let Some(class) = json.get("class").and_then(|v| v.as_str()) {
-                        if class == "on" { btn_target.add_css_class("active"); }
-                        else { btn_target.remove_css_class("active"); }
+                        if class == "on" {
+                            btn_target.add_css_class("active");
+                        } else {
+                            btn_target.remove_css_class("active");
+                        }
                     }
                 }
             }
+
+            attempts += 1;
+            if !dns_in_flight.swap(true, Ordering::AcqRel) {
+                let dns_tx_bg = dns_tx.clone();
+                let dns_in_flight_bg = Arc::clone(&dns_in_flight);
+                std::thread::spawn(move || {
+                    let out = helpers::get_output_home_bin("cf-status", &[]);
+                    let _ = dns_tx_bg.send(out);
+                    dns_in_flight_bg.store(false, Ordering::Release);
+                });
+            }
+
             if attempts >= 45 { glib::ControlFlow::Break } else { glib::ControlFlow::Continue }
         });
     });
@@ -657,9 +694,9 @@ pub fn build_ui(app: &Application) {
     let (status_tx, status_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let dns_o = helpers::get_output_home_bin("cf-status", &[]);
-        let air_o = std::process::Command::new("rfkill").arg("list").arg("wlan").output().ok();
+        let air_o = helpers::get_output("rfkill", &["list", "wlan"]);
         let mute_o = helpers::get_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]);
-        let bright_o = std::process::Command::new("brightnessctl").arg("i").arg("-m").output().ok();
+        let bright_o = helpers::get_output("brightnessctl", &["i", "-m"]);
         let _ = status_tx.send((dns_o, air_o, mute_o, bright_o));
     });
 
@@ -673,7 +710,7 @@ pub fn build_ui(app: &Application) {
             }
             // Apply Airplane State
             if let Some(out) = air_o {
-                if String::from_utf8_lossy(&out.stdout).contains("Soft blocked: yes") { btn_air_load.add_css_class("active"); }
+                if String::from_utf8_lossy(&out).contains("Soft blocked: yes") { btn_air_load.add_css_class("active"); }
             }
             // Apply Mute/Volume State
             if let Some(out) = mute_o {
@@ -685,7 +722,7 @@ pub fn build_ui(app: &Application) {
             }
             // Apply Brightness State
             if let Some(out) = bright_o {
-                if let Some(p) = String::from_utf8_lossy(&out.stdout).split(',').nth(3) {
+                if let Some(p) = String::from_utf8_lossy(&out).split(',').nth(3) {
                      if let Ok(val) = p.replace("%", "").replace("\n", "").parse::<f64>() {
                          scale_bright_load.set_value(val);
                      }
@@ -704,34 +741,47 @@ pub fn build_ui(app: &Application) {
     let scale_vol_watch = scale_volume.clone();
     let last_interaction_watch = last_interaction.clone();
 
-    glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
-        let sb_inner = scale_bright_watch.clone();
-        let sv_inner = scale_vol_watch.clone();
-        let li_inner = last_interaction_watch.clone();
-        glib::timeout_add_seconds_local(1, move || {
-            // Guard: If user touched slider < 3 seconds ago, SKIP update.
-            if li_inner.borrow().elapsed().as_secs() < 3 { return glib::ControlFlow::Continue; }
-            
-            // Check Brightness
-            if let Ok(out) = std::process::Command::new("brightnessctl").arg("i").arg("-m").output() {
-                if let Some(p) = String::from_utf8_lossy(&out.stdout).split(',').nth(3) {
-                    if let Ok(sys_val) = p.replace("%", "").replace("\n", "").parse::<f64>() {
-                         if (sb_inner.value() - sys_val).abs() > 1.0 { sb_inner.set_value(sys_val); }
-                    }
+    // Background poll result channel for external brightness/volume changes.
+    let (slider_tx, slider_rx) = mpsc::channel::<SliderSnapshot>();
+    let slider_in_flight = Arc::new(AtomicBool::new(false));
+
+    glib::timeout_add_seconds_local(1, move || {
+        if let Ok(snapshot) = slider_rx.try_recv() {
+            if let Some(sys_val) = snapshot.brightness {
+                if (scale_bright_watch.value() - sys_val).abs() > 1.0 {
+                    scale_bright_watch.set_value(sys_val);
                 }
             }
-            // Check Volume
-            if let Some(out) = helpers::get_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]) {
-                if let Some(vol_str) = String::from_utf8_lossy(&out).split_whitespace().nth(1) {
-                    if let Ok(vol_float) = vol_str.parse::<f64>() {
-                        let sys_val = vol_float * 100.0;
-                        if (sv_inner.value() - sys_val).abs() > 1.0 { sv_inner.set_value(sys_val); }
-                    }
+            if let Some(sys_val) = snapshot.volume {
+                if (scale_vol_watch.value() - sys_val).abs() > 1.0 {
+                    scale_vol_watch.set_value(sys_val);
                 }
             }
-            glib::ControlFlow::Continue
-        });
-        glib::ControlFlow::Break
+        }
+
+        // Guard: If user touched slider < 3 seconds ago, skip external refresh.
+        if last_interaction_watch.borrow().elapsed().as_secs() < 3 {
+            return glib::ControlFlow::Continue;
+        }
+
+        // Keep at most one command batch in flight; avoids overlap on slow systems.
+        if !slider_in_flight.swap(true, Ordering::AcqRel) {
+            let slider_tx_bg = slider_tx.clone();
+            let slider_in_flight_bg = Arc::clone(&slider_in_flight);
+            std::thread::spawn(move || {
+                let brightness = helpers::get_output("brightnessctl", &["i", "-m"])
+                    .as_deref()
+                    .and_then(parse_brightness_pct);
+                let volume = helpers::get_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]) 
+                    .as_deref()
+                    .and_then(parse_volume_pct);
+
+                let _ = slider_tx_bg.send(SliderSnapshot { brightness, volume });
+                slider_in_flight_bg.store(false, Ordering::Release);
+            });
+        }
+
+        glib::ControlFlow::Continue
     });
 
     window.present();

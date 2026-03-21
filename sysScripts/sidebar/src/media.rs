@@ -1,17 +1,32 @@
-//! Dynamic Media Player Widget (media)
+//! Media widget backed by playerctl.
 //!
-//! A "Smart" widget that interfaces with `playerctl` to control media playback.
-//! 
-//! Key Features:
-//! 1. **Auto-Hiding:** The widget is invisible (`visible = false`) by default and only appears
-//!    when an active media player (Spotify, Firefox, mpv, etc.) is detected.
-//! 2. **Polling Architecture:** Checks for status updates every 1 second. We use polling instead
-//!    of DBus signals here for simplicity and robustness against player crashes.
-//! 3. **Universal Control:** Works with any MPRIS-compliant player.
+//! The card stays hidden when no MPRIS player is active and updates once per second.
 
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Label, Orientation, Align};
 use crate::helpers; // Shared helper for running shell commands
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+
+struct MediaSnapshot {
+    status: String,
+    title: String,
+    artist: String,
+}
+
+fn parse_media_snapshot(out: &[u8]) -> Option<MediaSnapshot> {
+    let raw = String::from_utf8_lossy(out);
+    let parts: Vec<&str> = raw.trim().split(";;").collect();
+    if parts.len() < 3 {
+        return None;
+    }
+
+    Some(MediaSnapshot {
+        status: parts[0].to_string(),
+        title: parts[1].to_string(),
+        artist: parts[2].to_string(),
+    })
+}
 
 /// Builds the Media Player card.
 pub fn build() -> Box {
@@ -82,58 +97,50 @@ pub fn build() -> Box {
     container.append(&artist_label);
     container.append(&controls);
 
-    // 4. The Polling Loop (State Management)
-    // We clone the widget handles so we can modify them inside the closure.
+    // Poll from the GTK loop, but run command I/O on a worker thread.
     let container_poll = container.clone();
     let title_poll = title_label.clone();
     let artist_poll = artist_label.clone();
     let play_btn_poll = btn_play_clone.clone();
 
+    let (tx, rx) = mpsc::channel::<Option<MediaSnapshot>>();
+    let in_flight = Arc::new(AtomicBool::new(false));
+
     // Runs every 1 second
     glib::timeout_add_seconds_local(1, move || {
-        // Fetch metadata in a custom format string to minimize parsing logic.
-        // Format: "Status;;Title;;Artist" (e.g., "Playing;;Never Gonna Give You Up;;Rick Astley")
-        let output = std::process::Command::new("playerctl")
-            .arg("metadata")
-            .arg("--format")
-            .arg("{{status}};;{{title}};;{{artist}}")
-            .output();
-
-        match output {
-            // Case A: Player Found & Data Retrieved
-            Ok(out) if out.status.success() => {
-                let raw = String::from_utf8_lossy(&out.stdout);
-                let parts: Vec<&str> = raw.trim().split(";;").collect();
-
-                if parts.len() >= 3 {
-                    let status = parts[0]; // "Playing", "Paused", or "Stopped"
-                    let title = parts[1];
-                    let artist = parts[2];
-
-                    // 1. Show the widget
+        if let Ok(snapshot) = rx.try_recv() {
+            match snapshot {
+                Some(data) => {
                     container_poll.set_visible(true);
-
-                    // 2. Update Text
-                    title_poll.set_label(title);
-                    artist_poll.set_label(artist);
-
-                    // 3. Update Play/Pause Icon based on status
-                    if status == "Playing" {
-                        play_btn_poll.set_label("⏸"); 
+                    title_poll.set_label(&data.title);
+                    artist_poll.set_label(&data.artist);
+                    if data.status == "Playing" {
+                        play_btn_poll.set_label("⏸");
                     } else {
                         play_btn_poll.set_label("▶");
                     }
-                } else {
-                    // Data was malformed or empty -> Hide widget
+                }
+                None => {
                     container_poll.set_visible(false);
                 }
-            },
-            // Case B: No Player Found (Command failed)
-            _ => {
-                // Instantly hide the widget to clear space
-                container_poll.set_visible(false);
             }
         }
+
+        // Keep at most one fetch in flight to avoid thread pileups under slow/hung MPRIS.
+        if !in_flight.swap(true, Ordering::AcqRel) {
+            let tx_bg = tx.clone();
+            let in_flight_bg = Arc::clone(&in_flight);
+            std::thread::spawn(move || {
+                let output = helpers::get_output(
+                    "playerctl",
+                    &["metadata", "--format", "{{status}};;{{title}};;{{artist}}"],
+                );
+                let parsed = output.as_deref().and_then(parse_media_snapshot);
+                let _ = tx_bg.send(parsed);
+                in_flight_bg.store(false, Ordering::Release);
+            });
+        }
+
         // Return Continue to keep the loop running
         glib::ControlFlow::Continue
     });
