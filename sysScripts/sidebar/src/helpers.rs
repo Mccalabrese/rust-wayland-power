@@ -287,21 +287,21 @@ pub fn build_calendar_grid(year: i32, month: u32) -> gtk4::Grid {
 
         vbox.append(&num_label);
         vbox.append(&dot_label);
+        
+        let mut btn_classes = vec!["calendar-day-btn".to_string()];
 
+        if today.year() == year && today.month() == month && today.day() == day_num as u32 {
+            btn_classes.push("today".to_string());
+        }
         // Wrap in a transparent button to make it clickable
         let btn = gtk4::Button::builder()
             .child(&vbox)
-            .css_classes(vec!["calendar-day-btn".to_string()])
+            .css_classes(btn_classes)
             .hexpand(true)
             .vexpand(true)
             .valign(gtk4::Align::Fill)
             .build();
 
-        // Highlight Today
-        if today.year() == year && today.month() == month && today.day() == day_num as u32 {
-            btn.add_css_class("today");
-        }
-        
         // Click Action: Launch Calendar TUI focused on this date
         btn.connect_clicked(move |_| {
             println!("Clicked Date: {}/{}/{}", year, month, day_num);

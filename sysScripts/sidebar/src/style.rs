@@ -139,10 +139,24 @@ pub fn load_css() {
             margin-top: -5px; /* Pull it up closer to number */
         }
 
-        /* Highlights the current day */
-        .today {
-            background-color: #3584e4;
-            color: white;
+        /* GTK themes often target button nodes directly, so we do the same here. */
+        button.calendar-day-btn.today,
+        button.calendar-day-btn.today:focus,
+        button.calendar-day-btn.today:active,
+        button.calendar-day-btn.today:checked {
+            background-image: none;
+            background-color: #89b4fa;
+            border-radius: 8px;
+        }
+
+        button.calendar-day-btn.today:hover {
+            background-image: none;
+            background-color: #b4befe;
+        }
+
+        button.calendar-day-btn.today .calendar-day-num,
+        button.calendar-day-btn.today .calendar-dot {
+            color: #1e1e2e;
         }
         
         /* Navigation Arrows */
