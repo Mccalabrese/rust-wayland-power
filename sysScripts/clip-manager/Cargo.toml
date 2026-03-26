@@ -7,5 +7,5 @@ edition = "2024"
 anyhow = "1.0.100"
 dirs = "6.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
-sysinfo = "0.36.1"
-toml = "0.9.8"
+sysinfo = "0.38.4"
+toml = "1.1.0"

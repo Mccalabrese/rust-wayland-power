@@ -16,11 +16,10 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir() {
             return home.join(stripped);
         }
-    }
     PathBuf::from(path)
 }
 
