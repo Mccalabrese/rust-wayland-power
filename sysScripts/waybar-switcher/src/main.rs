@@ -18,11 +18,10 @@ use std::time::Duration;
 /// Expands the tilde (`~`) in file paths to the user's home directory.
 /// Rust's standard library `Path` does not handle shell expansions automatically.
 fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir() {
             return home.join(stripped);
         }
-    }
     PathBuf::from(path)
 }
 
