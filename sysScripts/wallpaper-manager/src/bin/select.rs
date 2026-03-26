@@ -16,11 +16,10 @@ use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
 fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir() {
             return home.join(stripped);
         }
-    }
     PathBuf::from(path)
 }
 
