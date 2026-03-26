@@ -2,7 +2,7 @@
 //!
 //! A comprehensive system provisioning tool written in Rust.
 //! Designed to take a fresh Arch Linux installation (base + git) and transform it 
-//! into a fully configured, multi-session Wayland environment (Niri, Hyprland, Sway).
+//! into a fully configured, multi-session Wayland environment (Niri, Sway).
 //!
 //! Core Responsibilities:
 //! 1. **Hardware Detection:** Automatically identifies GPU vendors (NVIDIA/AMD/Intel) 
@@ -636,8 +636,7 @@ fn optimize_pacman_config() {
     let sessions_to_remove = vec![
         "/usr/share/wayland-sessions/gnome.desktop",
         "/usr/share/wayland-sessions/gnome-classic.desktop",
-        "/usr/share/wayland-sessions/gnome-classic-wayland.desktop",
-        "/usr/share/wayland-sessions/hyprland-uwsm.desktop"
+        "/usr/share/wayland-sessions/gnome-classic-wayland.desktop"
     ];
 
     for session in sessions_to_remove {
@@ -897,7 +896,6 @@ stocks = ["SPY", "QQQ", "NVDA"]
 wallpaper_dir = "{}/Pictures/Wallpapers"
 swww_params = ["--transition-fps", "60", "--transition-type", "any", "--transition-duration", "2"]
 swaybg_cache_file = "swaybg_last_wallpaper"
-hyprland_refresh_script = "~/.config/hypr/scripts/Refresh.sh"
 cache_file = "~/.cache/wallpapers.json"
 rofi_config_path = "~/.config/rofi/config-wallpaper.rasi"
 rofi_theme_override = "element-icon {{ size: 20%; }}"
@@ -917,7 +915,6 @@ window_title = "System Update"
 [waybar_switcher]
 target_file = "/tmp/waybar-config.jsonc"
 niri_config = "~/.config/waybar/niriConfig.jsonc"
-hyprland_config = "~/.config/waybar/hyprConfig.jsonc"
 sway_config = "~/.config/waybar/swayConfig.jsonc"
 
 [cloudflare_toggle]
@@ -944,21 +941,19 @@ rofi_config = "~/.config/rofi/config-radio.rasi"
 message = "Radio Menu"
 
 [kb_launcher.compositor_args]
-hyprland = ["--title=KeybindCheatSheetApp"]
 sway = ["--title=KeybindCheatSheetApp"]
 niri = ["--title=KeybindCheatSheet"]
 default = []
+
 [[kb_launcher.sheet]]
 name = "Niri"
 file = "~/.config/niri/keybinds_niri.txt"
+compositor = "niri"
 
 [[kb_launcher.sheet]]
 name = "Sway"
 file = "~/.config/sway/keybinds_sway.txt"
-
-[[kb_launcher.sheet]]
-name = "Hyprland"
-file = "~/.config/hypr/keybinds_hypr.txt"
+compositor = "sway"
 
 [[kb_launcher.sheet]]
 name = "Neovim"
@@ -1114,7 +1109,7 @@ fn build_custom_apps() {
     }
 }
 /// Renames session files to enforce a specific order in Greetd/Tuigreet.
-/// Strategy: Move standard files (e.g. hyprland.desktop) to custom numbered files (30-hyprland.desktop).
+/// Strategy: Move standard files (e.g. niri.desktop) to custom numbered files (10-niri.desktop).
 /// This prevents Pacman from deleting our custom config during updates while NoExtract is active.
 fn enforce_session_order(is_nvidia: bool) {
     println!("   🔧 Enforcing Session Order (Renaming .desktop files)...");
@@ -1125,9 +1120,8 @@ fn enforce_session_order(is_nvidia: bool) {
     let updates = vec![
         ("niri.desktop", "10-niri.desktop", "1. Niri"),
         ("sway.desktop", "20-sway.desktop", "2. Sway (Battery)"),
-        ("hyprland.desktop", "30-hyprland.desktop", "3. Hyprland"),
-        ("gnome.desktop", "40-gnome.desktop", "4. Gnome"),
-        ("gnome-wayland.desktop", "40-gnome-wayland.desktop", "4. Gnome-wayland"), // Handle Arch variation
+        ("gnome.desktop", "40-gnome.desktop", "3. Gnome"),
+        ("gnome-wayland.desktop", "40-gnome-wayland.desktop", "3. Gnome-wayland"), // Handle Arch variation
     ];
 
     for (std_name, custom_name, display_name) in updates {
