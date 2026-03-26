@@ -1002,10 +1002,10 @@ fn expected_binary_names(app_path: &Path, app_name: &str) -> HashSet<String> {
         .current_dir(app_path)
         .output();
 
-    if let Ok(output) = metadata {
-        if output.status.success() {
-            if let Ok(json) = serde_json::from_slice::<Value>(&output.stdout) {
-                if let Some(packages) = json.get("packages").and_then(|v| v.as_array()) {
+    if let Ok(output) = metadata
+        && output.status.success()
+            && let Ok(json) = serde_json::from_slice::<Value>(&output.stdout)
+                && let Some(packages) = json.get("packages").and_then(|v| v.as_array()) {
                     for package in packages {
                         if let Some(targets) = package.get("targets").and_then(|v| v.as_array()) {
                             for target in targets {
@@ -1015,18 +1015,14 @@ fn expected_binary_names(app_path: &Path, app_name: &str) -> HashSet<String> {
                                     .map(|kinds| kinds.iter().any(|k| k.as_str() == Some("bin")))
                                     .unwrap_or(false);
 
-                                if is_bin {
-                                    if let Some(name) = target.get("name").and_then(|v| v.as_str()) {
+                                if is_bin
+                                    && let Some(name) = target.get("name").and_then(|v| v.as_str()) {
                                         expected.insert(name.to_string());
                                     }
-                                }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
 
     // Safe fallback so single-bin crates still update even if metadata fails.
     if expected.is_empty() {
