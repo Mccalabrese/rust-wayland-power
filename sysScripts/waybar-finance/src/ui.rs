@@ -25,7 +25,6 @@ pub enum AppEvent {
     SearchResultsFetched(Vec<YahooSearchResult>),
     MarketFetched(Result<MarketStatus>),
     SaveConfig,
-    SearchRequest(String),
     Tick,
 }
 /// The main TUI run loop.
@@ -61,7 +60,7 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
     tokio::task::spawn_blocking(move || {
         loop {
             if let Ok(event) = crossterm::event::read() {
-                if futures::executor::block_on(tx_input.send(AppEvent::Input(event))).is_err() { break; }
+                if tx_input.blocking_send(AppEvent::Input(event)).is_err() { break; }
             }
         }
     });
@@ -91,6 +90,20 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
     });
 
     // --- Main Loop ---
+    //Grab the treasury yields every 3 minutes and update the banner. This is separate from the
+    //main stock data fetch to ensure responsiveness and to provide constant market context.
+    let client_clone = client.clone();
+    let tx_clone = tx.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(180));
+        loop {
+            interval.tick().await;
+            match crate::network::fetch_market_status(&client_clone).await {
+                Ok(status) => { let _ = tx_clone.send(AppEvent::MarketFetched(Ok(status))).await; }
+                Err(e) => { let _ = tx_clone.send(AppEvent::MarketFetched(Err(e))).await; }
+            }
+        }
+    });
     // Wrapped in a block so cleanup always runs
     let result = async {
         loop {
@@ -124,8 +137,14 @@ pub async fn run_tui(client: &reqwest::Client, app: &mut App) -> Result<()> {
                             handle_keys(app, key.code, &tx, &search_tx, client).await;
                         }
                     }
-                    AppEvent::HistoryFetched(_, Ok(h)) => app.stock_history = Some(h),
-                    AppEvent::DetailsFetched(_, Ok(d)) => app.details = Some(d),
+                    AppEvent::HistoryFetched(sym, Ok(h)) => {
+                        app.stock_history = Some(h);
+                        app.message = format!("Loaded history for {}", sym);
+                    }
+                    AppEvent::DetailsFetched(sym, Ok(d)) => {
+                        app.details = Some(d);
+                        app.message = format!("Loaded details for {}", sym);
+                    }
                     _ => {}
                 }
             }
@@ -389,8 +408,6 @@ pub fn ui(frame: &mut ratatui::Frame, app: &mut App) {
 
     } else {
         // If no details loaded yet, show loading in the middle column
-        // FIX: Use 'details_area' (Full Width) instead of 'col_chunks[1]' (1/3 width)
-        // so the text has room to breathe.
         let text = "🐧🐧🐧\n\nSelect a ticker to begin\n\nPress 'a' to add  |  Press 'd' to delete\n\n🐧🐧🐧";
         
         let placeholder = Paragraph::new(text)

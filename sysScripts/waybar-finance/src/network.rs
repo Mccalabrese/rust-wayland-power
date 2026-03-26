@@ -74,6 +74,8 @@ struct YahooQuote {
 
     #[serde(rename = "fiftyTwoWeekLow")]
     low_52w: Option<f64>,
+    #[serde(rename = "regularMarketPrice")]
+    regular_market_price: Option<f64>,
     
     #[serde(rename = "ytdReturn")]
     ytd_return: Option<f64>,
@@ -82,11 +84,7 @@ struct YahooQuote {
     fifty_two_week_change: Option<f64>,
 
     symbol: String,
-
-    #[serde(rename = "regularMarketPrice")]
-    regular_market_price: Option<f64>,
 }
-
 // Global cache for the yahoo crumb to avoid re-fetching each request.
 static YAHOO_CRUMB: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
