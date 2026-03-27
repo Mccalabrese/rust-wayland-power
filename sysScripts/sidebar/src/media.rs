@@ -66,8 +66,8 @@ pub fn build() -> Box {
     let controls = Box::builder()
         .orientation(Orientation::Horizontal)
         .halign(Align::Center)
-        .spacing(20)
-        .margin_top(10)
+        .spacing(10)
+        .margin_top(5)
         .build();
 
     let btn_prev = Button::builder().label("⏮").css_classes(vec!["media-btn"]).build();

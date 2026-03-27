@@ -19,7 +19,7 @@ pub fn build() -> Box {
         .orientation(Orientation::Vertical)
         .css_classes(vec!["sysinfo-card"])
         .valign(Align::Center)
-        .vexpand(true) // Crucial for vertical centering in the sidebar layout
+        .vexpand(true)
         .build();
 
     // 2. Data Fetching (Static Snapshot)
