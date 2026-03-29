@@ -188,6 +188,10 @@ async fn handle_keys(
                 app.delete();
                 let _ = tx.send(AppEvent::SaveConfig).await;
             }
+            KeyCode::Char('s') => {
+                app.toggle_sidebar_view();
+                let _ = tx.send(AppEvent::SaveConfig).await;
+            }
             KeyCode::Enter => {
                 if let Some(sel) = app.state.selected() {
                     let sym = app.stocks[sel].symbol.clone(); 
@@ -283,7 +287,14 @@ pub fn ui(frame: &mut ratatui::Frame, app: &mut App) {
     let watchlist: Vec<ListItem> = app
         .stocks
         .iter()
-        .map(|s| ListItem::new(s.symbol.as_str()))
+        .map(|s| {
+            let line = if s.sidebar {
+                Line::from(vec![Span::raw("👁️ "), Span::raw(s.symbol.as_str())])
+            } else {
+                Line::from(vec![Span::raw("   "), Span::raw(s.symbol.as_str())])
+            };
+            line.into()
+        })
         .collect();
     let list = List::new(watchlist)
         .block(Block::default()
@@ -488,7 +499,7 @@ pub fn ui(frame: &mut ratatui::Frame, app: &mut App) {
 
     // 2. Key Hints (Right, Right-Aligned)
     let hints_text = match app.input_mode {
-        InputMode::Normal => "q:Quit  a:Add  d:Del  ↓/↑:Nav  Enter:Select",
+        InputMode::Normal => "q:Quit  a:Add  d:Del  s:toggle sidebar view  ↓/↑:Nav  Enter:Select",
         InputMode::Editing => "Enter:Confirm  Esc:Cancel",
         InputMode::KeyEntry => "Enter:Save  Esc:Quit",
     };

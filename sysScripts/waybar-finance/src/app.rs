@@ -173,6 +173,15 @@ impl App {
         };
         self.search_state.select(Some(i));
     }
+
+    pub fn toggle_sidebar_view(&mut self) {
+        if let Some(selected) = self.state.selected() {
+            if let Some(stock) = self.stocks.get_mut(selected) {
+                stock.sidebar = !stock.sidebar;
+            }
+        }
+    }
+
     ///Handles adding a stock and triggers data fetch
     pub fn handle_confirm_selection(&mut self, tx: &Sender<AppEvent>, client: &reqwest::Client) {
         let new_symbol = if let Some(idx) = self.search_state.selected() {
