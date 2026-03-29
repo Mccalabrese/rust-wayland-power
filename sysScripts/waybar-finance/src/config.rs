@@ -19,8 +19,9 @@ pub enum StockConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct StockStruct {
-    pub symbol: Option<String>,
-    pub sidebar: Option<bool>,
+    pub symbol: String,
+    #[serde(default = "set_sidebar_default")]
+    pub sidebar: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,6 +34,10 @@ struct ParsedConfig {
 struct FinanceConfig {
     api_key: String,
     stocks: Option<StockConfig>,
+}
+
+fn set_sidebar_default() -> bool {
+    true
 }
 /// Resolves the XDG-compliant configuration path.
 /// Usually ~/.config/waybar-finance/config.json on Linux.
@@ -54,15 +59,15 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
         if let Ok(parsed) = serde_json::from_str::<ParsedConfig>(&content) {
             let unified_stocks: Vec<StockStruct> = match parsed.stocks {
                 Some(StockConfig::Legacy(stocks)) => {
-                    stocks.unwrap_or_default().into_iter().map(|s| StockStruct { symbol: Some(s), sidebar: Some(true) }).collect()
+                    stocks.unwrap_or_default().into_iter().map(|s| StockStruct { symbol: s, sidebar: true }).collect()
                 },
                 Some(StockConfig::V2(stocks)) => {
                     stocks
                 },
                 _ => { vec![
-                    StockStruct { symbol: Some("SPY".into()), sidebar: Some(true) },
-                    StockStruct { symbol: Some("QQQ".into()), sidebar: Some(true) },
-                    StockStruct { symbol: Some("BTC-USD".into()), sidebar: Some(true) },
+                    StockStruct { symbol: "SPY".into(), sidebar: true },
+                    StockStruct { symbol: "QQQ".into(), sidebar: true },
+                    StockStruct { symbol: "BTC-USD".into(), sidebar: true },
                 ] },
             };
             return Ok(Config {
@@ -80,15 +85,15 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
                     && let Some(finance) = global.waybar_finance {
                         let unified_stocks: Vec<StockStruct> = match finance.stocks {
                             Some(StockConfig::Legacy(stocks)) => {
-                                stocks.unwrap_or_default().into_iter().map(|s| StockStruct { symbol: Some(s), sidebar: Some(true) }).collect()
+                                stocks.unwrap_or_default().into_iter().map(|s| StockStruct { symbol: s, sidebar: true }).collect()
                             },
                             Some(StockConfig::V2(stocks)) => {
                                 stocks
                             },
                             _ => { vec![
-                                StockStruct { symbol: Some("SPY".into()), sidebar: Some(true) },
-                                StockStruct { symbol: Some("QQQ".into()), sidebar: Some(true) },
-                                StockStruct { symbol: Some("BTC-USD".into()), sidebar: Some(true) },
+                                StockStruct { symbol: "SPY".into(), sidebar: true },
+                                StockStruct { symbol: "QQQ".into(), sidebar: true },
+                                StockStruct { symbol: "BTC-USD".into(), sidebar: true },
                             ] },
                         };
                         return Ok(Config {

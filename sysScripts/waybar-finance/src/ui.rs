@@ -190,9 +190,8 @@ async fn handle_keys(
             }
             KeyCode::Enter => {
                 if let Some(sel) = app.state.selected() {
-                    if let Some(sym) = app.stocks[sel].symbol.clone(){ 
-                        app.trigger_fetch(sym, tx, client);
-                    } else {app.message = "symbol not found!".to_string()};
+                    let sym = app.stocks[sel].symbol.clone(); 
+                    app.trigger_fetch(sym, tx, client);
                 } 
 
             }
@@ -284,7 +283,7 @@ pub fn ui(frame: &mut ratatui::Frame, app: &mut App) {
     let watchlist: Vec<ListItem> = app
         .stocks
         .iter()
-        .map(|s| ListItem::new(s.symbol.as_deref().unwrap_or("Unknown")))
+        .map(|s| ListItem::new(s.symbol.as_str()))
         .collect();
     let list = List::new(watchlist)
         .block(Block::default()

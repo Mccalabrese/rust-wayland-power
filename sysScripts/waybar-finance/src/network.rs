@@ -244,10 +244,12 @@ pub async fn run_waybar_mode(client: &reqwest::Client) -> Result<()> {
         }
     };
 
-    let futures: Vec<_> = config.stocks.iter().filter(|s| s.sidebar.unwrap_or(false)).filter_map(|s| s.symbol.as_ref()).map(|sym| {
+    let futures: Vec<_> = config.stocks
+        .iter().filter(|s| s.sidebar)
+        .map(|s| {
             let client = client.clone();
             let key = api_key.clone();
-            let sym = sym.clone();
+            let sym = s.symbol.clone();
             async move {
                 let q = fetch_quote(&client, &sym, &key).await;
                 (sym, q)

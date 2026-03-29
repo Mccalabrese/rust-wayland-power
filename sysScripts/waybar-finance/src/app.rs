@@ -26,9 +26,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             stocks: vec![
-                StockStruct { symbol: Some("SPY".into()), sidebar: Some(true) },
-                StockStruct { symbol: Some("QQQ".into()), sidebar: Some(true) },
-                StockStruct { symbol: Some("BTC-USD".into()), sidebar: Some(true) },
+                StockStruct { symbol: "SPY".into(), sidebar: true },
+                StockStruct { symbol: "QQQ".into(), sidebar: true },
+                StockStruct { symbol: "BTC-USD".into(), sidebar: true },
             ],
             api_key: None,
         }
@@ -183,7 +183,7 @@ impl App {
 
         if new_symbol.is_empty() { return; }
 
-        if self.stocks.iter().any(|s| s.symbol.as_ref() == Some(&new_symbol)) {
+        if self.stocks.iter().any(|s| s.symbol == new_symbol) {
             self.message = format!("{} exists!", new_symbol);
             self.message_color = Color::Yellow;
         } else {
@@ -194,7 +194,7 @@ impl App {
             
             // Trigger background work
             self.trigger_fetch(new_symbol.clone(), tx, client);
-            self.stocks.push(StockStruct { symbol: Some(new_symbol), sidebar: Some(true) });
+            self.stocks.push(StockStruct { symbol: new_symbol, sidebar: true });
             let tx_clone = tx.clone();
             tokio::spawn(async move {
                 let _ = tx_clone.send(AppEvent::SaveConfig).await;
