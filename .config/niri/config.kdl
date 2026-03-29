@@ -136,6 +136,13 @@ window-rule {
     default-column-width { fixed 1000; }
     default-window-height { fixed 600; }
 }
+window-rule {
+    match app-id="ghostty" title="calendar-tui"
+    open-floating true
+    default-column-width { fixed 1000; }
+    default-window-height { fixed 600; }
+}
+
 
 // Firefox PiP
 window-rule {
