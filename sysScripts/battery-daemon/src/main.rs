@@ -32,6 +32,8 @@ fn main() {
     let mut shutting_down = false;
 
     loop {
+        thread::sleep(Duration::from_secs(30)); // This is for your computer to run a check every 30 seconds to keep an eye on the battery
+
         let capacity_string = match fs::read_to_string(&battery_path) {
             Ok(battery_path_detection) => battery_path_detection,
             Err(_) => {
@@ -53,13 +55,13 @@ fn main() {
         };
 
         let status  = status_string.trim();
-            
+
             if capacity_int <= 10 && status == "Discharging" && !warning_10 && !shutting_down { // battery warning at 10%
-                let _ = Command::new("/usr/bin/notify-send").arg("Battery Warning 10%").arg("Shuts down at 3%").status();
+                let _ = Command::new("/usr/bin/notify-send").arg("Battery Warning 10%").arg("Shuts down at 3%").spawn();
                 warning_10 = true;
             } 
             if  capacity_int <= 5 && status == "Discharging" && !warning_5 && !shutting_down { // battery warning 5%
-                let _ = Command::new("/usr/bin/notify-send").arg("Battery Warning 5%").arg("Shuts down at 3%\nSAVE WORK NOW").status();
+                let _ = Command::new("/usr/bin/notify-send").arg("Battery Warning 5%").arg("Shuts down at 3%\nSAVE WORK NOW").spawn();
                 warning_5 = true;
             } 
             if status != "Discharging" { // prevents losing the warnings if you replug and let the computer drain again
@@ -72,7 +74,5 @@ fn main() {
                 shutting_down = true;
                 let _ = Command::new("/usr/bin/systemctl").arg("poweroff").spawn();
              } 
-
-            thread::sleep(Duration::from_secs(30)); // This is for your computer to run a check every 30 seconds to keep an eye on the battery
     } 
 }
