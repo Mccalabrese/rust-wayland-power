@@ -3,9 +3,28 @@ use std::thread;
 use std::time::Duration;
 use std::process::Command;
 
+fn get_battery_name() -> Option<String> {
+    let battery_path = fs::read_dir("/sys/class/power_supply/").ok()?;
+        for path in battery_path {
+            if let Ok(entry) = path {
+                let battery_file = entry.file_name().into_string().unwrap_or_default();
+                if battery_file.starts_with("BAT") {
+                    return Some(battery_file);
+                }
+            }
+        }
+    None
+}
+
 fn main() {
-    let battery_path = "/sys/class/power_supply/BAT0/capacity"; // path to check current battery capacity
-    let status_path = "/sys/class/power_supply/BAT0/status"; // path to check the status (discharging, charging, etc)
+    let battery_detection = match get_battery_name() {
+        Some(name) => name,
+        None => {
+            return;
+        }
+    };
+    let battery_path = format!("/sys/class/power_supply/{}/capacity", battery_detection); // path to check current battery capacity
+    let status_path = format!("/sys/class/power_supply/{}/status", battery_detection); // path to check the status (discharging, charging, etc)
 
     // These are for the popup warnings to ensure that they will show up no matter what
     let mut warning_10 = false; 
@@ -13,10 +32,26 @@ fn main() {
     let mut shutting_down = false;
 
     loop {
-        let capacity_string = fs::read_to_string(battery_path).expect("Failed to read battery cap");
-        let status_string = fs::read_to_string(status_path).expect("Failed to read charging status");
+        let capacity_string = match fs::read_to_string(&battery_path) {
+            Ok(battery_path_detection) => battery_path_detection,
+            Err(_) => {
+                continue;
+            }
+        };
+        let status_string = match fs::read_to_string(&status_path) {
+            Ok(status_path_detection) => status_path_detection,
+            Err(_) => {
+                continue;
+            }
+        };
 
-        let capacity_int = capacity_string.trim().parse::<u8>().expect("Failed to check");
+        let capacity_int = match capacity_string.trim().parse::<u8>() {
+            Ok(capacity) => capacity,
+            Err(_) => {
+                continue;
+            }
+        };
+
         let status  = status_string.trim();
             
             if capacity_int <= 10 && status == "Discharging" && !warning_10 && !shutting_down { // battery warning at 10%
@@ -35,23 +70,7 @@ fn main() {
             // Here is where the magic happens
             if capacity_int <= 3 && status == "Discharging" && !shutting_down { 
                 shutting_down = true;
-
-                let user = std::env::var("USER").unwrap_or_else(|_| {
-                    let output = Command::new("whoami").output();
-
-                    match output {
-                        Ok(output) => {
-                            String::from_utf8_lossy(&output.stdout).trim().to_string()
-                        },
-                        Err(_) => {
-                            String::new()
-                        }
-                    }
-                });
-
-                let _ = Command::new("/usr/bin/systemctl").arg("poweroff").status();
-                // To safely log user out while shutting down to prevent hangups
-                let _ = Command::new("/usr/bin/loginctl").args(["terminate-user", &user]).status();
+                let _ = Command::new("/usr/bin/systemctl").arg("poweroff").spawn();
              } 
 
             thread::sleep(Duration::from_secs(30)); // This is for your computer to run a check every 30 seconds to keep an eye on the battery
