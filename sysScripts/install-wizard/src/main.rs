@@ -223,7 +223,10 @@ fn main() {
         println!("   ⚠️  No packages found in pkglist.txt.");
     } else {
         let pkg_refs: Vec<&str> = common_pkgs.iter().map(|s| s.as_str()).collect();
-        install_pacman_packages(&pkg_refs);
+        if let Err(e) = install_pacman_packages(&pkg_refs) {
+            eprintln!("   ❌ Failed to install standard packages: {}", e);
+            std::process::exit(1);
+        };
     }
 
     if !AUR_PACKAGES.is_empty() {
@@ -595,29 +598,22 @@ fn setup_librewolf() -> Result<(), std::io::Error> {
 }
 
 /// installs packages via pacman with --needed and --noconfirm
-fn install_pacman_packages(packages: &[&str]) {
+fn install_pacman_packages(packages: &[&str]) -> Result<(), std::io::Error> {
     if packages.is_empty() {
-        return;
+        return Ok(());
     }
     let mut args = vec!["-S", "--needed", "--noconfirm"];
     args.extend(packages);
     let status = Command::new("sudo")
         .arg("pacman")
         .args(&args)
-        .status()
-        .unwrap_or_else(|_| {
-            eprintln!("❌ pacman not found or failed to execute.");
-            std::process::exit(1);
-        });
-
-    // UPDATE: Make failure fatal!
+        .status()?;
     if !status.success() {
-        eprintln!(
-            "{}",
-            "❌ Critical Error: Pacman failed to install packages.".red()
-        );
-        std::process::exit(1);
+        eprintln!("{}", format!("❌ Failed to install packages: {}", packages.join(", ")).red());
+        return Err(std::io::Error::other("Failed to install packages"));
     }
+    println!("   ✅ Installed packages: {}", packages.join(", "));
+    Ok(())
 }
 /// Bootstraps 'yay' from the AUR git repo if not present.
 /// This allows the script to run on a truly clean Arch install.
