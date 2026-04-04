@@ -275,7 +275,9 @@ fn main() {
         link_dotfiles_and_copy_resources();
 
         configure_system();
-        setup_librewolf();
+        if let Err(e) = setup_librewolf() {
+            eprintln!("   ❌ Failed to configure LibreWolf: {}", e);
+        }
         setup_waybar_configs();
         setup_secrets_and_geoclue();
         finalize_setup(); // Neovim/Tmux plugins
@@ -553,15 +555,15 @@ exec sway
     Ok(())
 }
 //-------- Main Steps ------
-fn setup_librewolf() {
+fn setup_librewolf() -> Result<(), std::io::Error> {
     println!("   🐺 Configuring LibreWolf for Human Beings...");
 
-    let home = dirs::home_dir().unwrap();
+    let home = dirs::home_dir().ok_or_else(|| std::io::Error::other("Could not determine home directory"))?;
     let wolf_dir = home.join(".librewolf");
     let override_file = wolf_dir.join("librewolf.overrides.cfg");
 
     // Ensure directory exists
-    let _ = fs::create_dir_all(&wolf_dir);
+    fs::create_dir_all(&wolf_dir)?;
 
     // The "Student-Friendly" Config
     let config_content = r#"
@@ -574,25 +576,22 @@ fn setup_librewolf() {
     "#;
 
     // Write it
-    if let Err(e) = fs::write(&override_file, config_content) {
-        eprintln!("   ⚠️ Failed to write LibreWolf config: {}", e);
-    } else {
-        println!("   ✅ LibreWolf overrides applied (WiFi & Canvas fixed).");
-    }
+    fs::write(&override_file, config_content)?;
     // Set as Default Browser (XDG)
     println!("   👉 Setting LibreWolf as default browser...");
 
-    let _ = Command::new("xdg-settings")
+    Command::new("xdg-settings")
         .args(["set", "default-web-browser", "librewolf.desktop"])
-        .status();
+        .status()?;
 
-    let _ = Command::new("xdg-mime")
+    Command::new("xdg-mime")
         .args(["default", "librewolf.desktop", "x-scheme-handler/http"])
-        .status();
+        .status()?;
 
-    let _ = Command::new("xdg-mime")
+    Command::new("xdg-mime")
         .args(["default", "librewolf.desktop", "x-scheme-handler/https"])
-        .status();
+        .status()?;
+    Ok(())
 }
 
 /// installs packages via pacman with --needed and --noconfirm
