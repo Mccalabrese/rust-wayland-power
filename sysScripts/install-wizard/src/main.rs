@@ -16,6 +16,7 @@
 use colored::*;
 use inquire::{Select, Text};
 use serde_json::Value;
+use tempfile::NamedTempFile;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -108,7 +109,10 @@ fn main() {
             match gpu {
                 GpuVendor::Nvidia(NvidiaArch::Turing) => {
                     println!("   👉 NVIDIA Turing Detected (GTX 16xx / RTX 20xx).");
-                    install_nvidia_legacy_580();
+                    if let Err(e) = install_nvidia_legacy_580() {
+                        eprintln!("   ❌ Failed to install legacy NVIDIA drivers: {}", e);
+                        std::process::exit(1);
+                    }
                 },
                 GpuVendor::Nvidia(NvidiaArch::Modern) => {
                     println!("   👉 Modern NVIDIA Detected (RTX 30xx/40xx).");
@@ -310,7 +314,7 @@ fn find_igpu() -> Option<(String, String)> {
 }
 
 /// Installs the specific 580.119.02 driver from Arch Archive and locks it.
-fn install_nvidia_legacy_580() {
+fn install_nvidia_legacy_580() -> Result<(), std::io::Error> {
     println!("\n{}", "🛑 Turing GPU Detected (GTX 16xx / RTX 20xx)".yellow().bold());
     println!("   The latest NVIDIA drivers (590+) break power management on this card.");
     println!("   Downgrading to version 580.119.02 for battery life safety...");
@@ -320,7 +324,8 @@ fn install_nvidia_legacy_580() {
     let packages = vec![
         "https://archive.archlinux.org/packages/n/nvidia-dkms/nvidia-dkms-580.119.02-1-x86_64.pkg.tar.zst",
         "https://archive.archlinux.org/packages/n/nvidia-utils/nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst",
-        "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-580.119.02-1-x86_64.pkg.tar.zst"
+        "https://archive.archlinux.org/packages/n/nvidia-settings/nvidia-settings-580.119.02-1-x86_64.pkg.tar.zst",
+        "https://archive.archlinux.org/packages/l/lib32-nvidia-utils/lib32-nvidia-utils-580.119.02-1-x86_64.pkg.tar.zst"
     ];
 
     let mut args = vec!["-U", "--noconfirm"];
@@ -329,37 +334,53 @@ fn install_nvidia_legacy_580() {
     let status = Command::new("sudo")
         .arg("pacman")
         .args(&args)
-        .status()
-        .unwrap_or_else(|_| {
-            eprintln!("❌ pacman failed to install legacy drivers.");
-            std::process::exit(1);
-        });
+        .status()?;
 
     if !status.success() {
         eprintln!("{}", "❌ Critical Error: Failed to install legacy NVIDIA drivers.".red());
-        std::process::exit(1);
+        return Err(std::io::Error::other("Failed to install NVIDIA drivers"));
     }
 
     // 2. Pin the version in pacman.conf
     println!("   🔒 Pinning NVIDIA drivers in /etc/pacman.conf...");
     let pacman_conf = "/etc/pacman.conf";
-    let ignore_line = "IgnorePkg = nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings linux linux-headers linux-lts linux-lts-headers";
+    let ignore_line = "IgnorePkg = nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings";
     
     // Check if IgnorePkg is already active
     let content = fs::read_to_string(pacman_conf).unwrap_or_default();
     
-    if !content.contains("nvidia-dkms") {
+    if !content.contains(ignore_line) {
         // We look for the [options] header and insert IgnorePkg below it
         // Or simply uncomment the existing IgnorePkg line if standard arch config
         // Simplest robust method: Append to [options]
         
-        let sed_cmd = format!("/^\\[options\\]/a {}", ignore_line);
-        let _ = Command::new("sudo")
-            .args(["sed", "-i", &sed_cmd, pacman_conf])
-            .status();
-            
-        println!("   ✅ Drivers pinned. System updates will skip NVIDIA.");
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let opts = lines.iter().position(|line| line.starts_with("[options]"));
+        let patched_content = if let Some(idx) = opts {
+            lines.insert(idx + 1, ignore_line.to_string());
+            lines.join("\n")
+        } else {
+            // If [options] not found, append at the end (unlikely)
+            format!("{}\n\n[options]\n{}", content, ignore_line)
+        };
+        let mut temp_file = NamedTempFile::new()?;
+        temp_file.write_all(patched_content.as_bytes())?;
+        let status = Command::new("sudo")
+            .arg("install")
+            .arg("-m").arg("644")
+            .arg("-o").arg("root")
+            .arg("-g").arg("root")
+            .arg(temp_file.path())
+            .arg(pacman_conf)
+            .status()?;
+
+        if !status.success() {
+            eprintln!("{}", "❌ Failed to update pacman.conf with IgnorePkg.".red());
+            return Err(std::io::Error::other("Failed to update pacman.conf"));
+        }        
     }
+    println!("   ✅ Drivers pinned. System updates will skip NVIDIA.");
+    Ok(())
 }
 
 /// Generates the sway-hybrid wrapper script with DYNAMIC paths.
