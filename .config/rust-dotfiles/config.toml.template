@@ -2,6 +2,7 @@
 [global]
 pager = "bat --paging=always --style=plain"
 terminal = "ghostty"
+
 # -------------------------------
 # [kb_launcher]
 # Settings for our keybind launcher
@@ -18,20 +19,20 @@ file = "~/.config/nvim/keybinds_nvim.txt"
 [[kb_launcher.sheet]]
 name = "Niri"
 file = "~/.config/niri/keybinds_niri.txt"
-compositor = "sway"
+compositor = "niri"
 
 [[kb_launcher.sheet]]
 name = "Sway"
 file = "~/.config/sway/keybinds_sway.txt"
-compositor = "niri"
+compositor = "sway"
+
 # -------------------------------
 # [waybar_weather]
 # Settings for our weather module
-# We can FINALLY get the API key out of the Waybar config!
 # -------------------------------
 [waybar_weather]
-# We'll refactor waybar-weather to read this key
 owm_api_key = "YOUR_SECRET_OWM_KEY_HERE"
+
 # -------------------------------
 # [wallpaper_manager]:
 # Settings for our wallpaper daemon/selector
@@ -50,8 +51,10 @@ cache_file = "~/.cache/wallpapers.json"
 rofi_config_path = "~/.config/rofi/config-wallpaper.rasi"
 rofi_theme_override = "element-icon { size: 20%; }"
 
-# In ~/.config/rust-dotfiles/config.toml
-
+# -------------------------------
+# [Updater]
+# Settings for our updater module
+# -------------------------------
 [update_check]
 # The command to run. We use a list for command and args.
 command_string = "nm-online -q -t 5 && (checkupdates; yay -Qua) || true"
@@ -71,26 +74,30 @@ icon_error = "/usr/share/icons/Adwaita/48x48/status/dialog-error.png"
 # The title for the terminal window
 window_title = "System Update"
 
+# -------------------------------
+# [Session Waybar Switcher]
+# Settings for our waybar changes between sessions
+# -------------------------------
 [waybar_switcher]
 # Where the active config should be copied to
 target_file = "/tmp/waybar-config.jsonc"
-
 # Source files for each session
 niri_config = "~/.config/waybar/niriConfig.jsonc"
-hyprland_config = "~/.config/waybar/hyprConfig.jsonc"
 sway_config = "~/.config/waybar/swayConfig.jsonc"
 
+# -------------------------------
+# [DNS (Internet Privacy)]
+# Settings for module that toggle DNS over HTTPS
+# -------------------------------
 [cloudflare_toggle]
-# For cf-status.rs
-text_on = "󰅟"  # Example: "ON" or an icon
+text_on = "󰅟"  
 class_on = "on"
-text_off = "⚠︎" # Example: "OFF" or an icon
+text_off = "⚠︎"
 class_off = "off"
 service_name = "dnscrypt-proxy"
 # For cf-toggle.rs (root)
 resolv_content_on = "nameserver 127.0.0.1"
 resolv_content_off = "nameserver 1.1.1.1\nnameserver 1.0.0.1"
-
 # For cf-toggle.rs (user)
 bar_process_name = "waybar"
 bar_signal_num = 10 # The '10' from 'SIGRTMIN() + 10'

@@ -285,7 +285,10 @@ fn main() {
         println!("\n{}", "🔗 Linking Config Files...".blue().bold());
         link_dotfiles_and_copy_resources();
 
-        configure_system();
+        if let Err(e) = configure_system() {
+            eprintln!("   ❌ Failed to configure system services: {}", e);
+        }
+
         if let Err(e) = setup_librewolf() {
             eprintln!("   ❌ Failed to configure LibreWolf: {}", e);
         }
@@ -672,114 +675,243 @@ fn install_aur_packages() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-/// Configures critical system services.
-/// 1. Disables systemd-resolved (we use Cloudflared/Dnsmasq).
-/// 2. Configures `greetd` (tuigreet) as the display manager.
-/// 3. Sets `KillUserProcesses=yes` to prevent lingering sessions.
-fn configure_system() {
-    // --- 1. SANITIZE MKINITCPIO (Fix Archinstall 2025 Bug) ---
+/// Configures essential system services and settings, including mkinitcpio sanitation, enabling
+/// geoclue/bluetooth/bolt, enabling Pacman cache cleanup, setting up the session environment, and
+/// configuring logind and greetd. This function is idempotent and can be safely run multiple times
+/// without causing issues.
+fn configure_system() -> Result<(), std::io::Error> {
+    sanitize_mkinitcpio()?;
+    run_cmd("sudo", &["systemctl", "enable", "geoclue.service"])?;
+    run_cmd("sudo", &["systemctl", "enable", "bluetooth.service"])?;
+    run_cmd("sudo", &["systemctl", "enable", "bolt.service"])?;
+    configure_dns()?;
+    // Prevent Pacman from eating the entire hard drive over time
+    println!("   🧹 Enabling automated Pacman cache cleanup...");
+    run_cmd("sudo", &["systemctl", "enable", "--now", "paccache.timer"])?;
+
+    // --- ENVIRONMENT & LOGIND ---
+    println!("    🔧 Configuring Session Environment (PATH)...");
+    let home = dirs::home_dir()
+        .ok_or_else(|| std::io::Error::other("Could not determine home directory"))?;
+    let env_dir = home.join(".config/environment.d");
+    let env_file = env_dir.join("99-cargo-path.conf");
+
+    fs::create_dir_all(&env_dir)?;
+    let content = "PATH=$HOME/.cargo/bin:$PATH\n";
+    fs::write(&env_file, content)?;
+
+    configure_logind()?;
+    configure_greetd()?;
+    configure_shell()?;
+    Ok(())
+}
+
+/// Cleans up the `mkinitcpio.conf` file to fix the known Archinstall 2025 bug that appends 'o"' to
+/// the end of the file,
+fn sanitize_mkinitcpio() -> Result<(), std::io::Error> {
+    // --- SANITIZE MKINITCPIO (Fix Archinstall 2025 Bug) ---
     // This protects NVIDIA users from the 'o"' corruption crash.
     println!("   🧹 Checking mkinitcpio.conf for corruption...");
     let mkinit_path = "/etc/mkinitcpio.conf";
 
-    // 1. Check if the file specifically ends with the garbage (ignoring whitespace)
+    // Check if the file specifically ends with the garbage (ignoring whitespace)
     // We read it first to be safe, rather than firing sed blindly.
     if let Ok(content) = fs::read_to_string(mkinit_path) {
         let trimmed = content.trim(); // Removes trailing \n
         if trimmed.ends_with("o\"") || trimmed.ends_with("o”") {
             println!("   ⚠️  Corruption detected at end of file. Cleaning up...");
-
-            // 2. Safe Delete: Only delete the last line ($) if it matches the pattern
-            // usage: sed -i '${/^o"$/d}' filename
-            let _ = Command::new("sudo")
-                .args(["sed", "-i", "${/^o\"$/d}", mkinit_path])
-                .status();
-
-            // Extra safety: Removing the smart-quote variation just in case
-            let _ = Command::new("sudo")
-                .args(["sed", "-i", "${/^o”$/d}", mkinit_path])
-                .status();
+            let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+            let mut last_line = lines.pop().unwrap_or_default();
+            if last_line.trim_end().ends_with("o\"") || last_line.trim_end().ends_with("o”") {
+                // Remove the offending characters
+                last_line = last_line.trim_end_matches(['o', '"', '”']).to_string();
+                if !last_line.is_empty() {
+                    lines.push(last_line);
+                }
+            } else {
+                // If the last line doesn't match, we put it back (defensive)
+                lines.push(last_line);
+            }
+            let mut temp_file = NamedTempFile::new()?;
+            temp_file.write_all(lines.join("\n").as_bytes())?;
+            let status = Command::new("sudo")
+                .arg("install")
+                .arg("-m")
+                .arg("644")
+                .arg("-o")
+                .arg("root")
+                .arg("-g")
+                .arg("root")
+                .arg(temp_file.path())
+                .arg(mkinit_path)
+                .status()?;
+            if !status.success() {
+                eprintln!("{}", "❌ Failed to sanitize mkinitcpio.conf.".red());
+                return Err(std::io::Error::other("Failed to sanitize mkinitcpio.conf"));
+            }
         }
     }
-    run_cmd("sudo", &["systemctl", "enable", "geoclue.service"]);
-    run_cmd("sudo", &["systemctl", "enable", "bluetooth.service"]);
-    run_cmd("sudo", &["systemctl", "enable", "bolt.service"]);
+    Ok(())
+}
 
-    // Prevent Pacman from eating the entire hard drive over time
-    println!("   🧹 Enabling automated Pacman cache cleanup...");
-    run_cmd("sudo", &["systemctl", "enable", "--now", "paccache.timer"]);
-
-    // --- CLOUDFLARED CONFIGURATION ---
+///Configures dnscrypt-proxy to use Cloudflare's DNS servers for enhanced privacy and security.
+fn configure_dns() -> Result<(), std::io::Error> {
+    // --- DNS Crypt Proxy CONFIGURATION ---
     println!("   🔧 Configuring dnscrypt-proxy (DNS Proxy)...");
 
     // 1. Ensure package is installed (failsafe)
-    let _ = Command::new("sudo")
+    Command::new("sudo")
         .args(["pacman", "-S", "--needed", "--noconfirm", "dnscrypt-proxy"])
-        .status();
+        .status()?;
 
     // 2. Configure TOML to use Cloudflare
     let dns_conf = "/etc/dnscrypt-proxy/dnscrypt-proxy.toml";
-    if Path::new(dns_conf).exists() {
-        // Uncomment server_names = ['cloudflare']
-        let _ = Command::new("sudo")
-            .args([
-                "sed",
-                "-i",
-                "s/^# server_names = \\['cloudflare'\\]/server_names = ['cloudflare']/",
-                dns_conf,
-            ])
-            .status();
-        // Ensure it listens on localhost (usually default, but good to ensure)
-        let _ = Command::new("sudo")
-            .args(["sed", "-i", "s/^listen_addresses = \\['127.0.0.1:53'\\]/listen_addresses = ['127.0.0.1:53', '[::1]:53']/", dns_conf])
-            .status();
+    let content = fs::read_to_string(dns_conf)?;
+    let mut modified = false;
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    for line in &mut lines {
+        let normalized = line.trim_start().trim_start_matches('#').trim_start();
+        if normalized.starts_with("server_names =") && normalized.contains("cloudflare") {
+            if line == "server_names = ['cloudflare']" {
+                continue; // Already correct
+            }
+            *line = "server_names = ['cloudflare']".to_string();
+            modified = true;
+        } else if normalized.starts_with("listen_addresses =")
+            && normalized.contains("127.0.0.1:53")
+        {
+            if line == "listen_addresses = ['127.0.0.1:53', '[::1]:53']" {
+                continue; // Already correct
+            }
+            *line = "listen_addresses = ['127.0.0.1:53', '[::1]:53']".to_string();
+            modified = true;
+        }
     }
-
+    if modified {
+        let mut temp_file = NamedTempFile::new()?;
+        temp_file.write_all(lines.join("\n").as_bytes())?;
+        let status = Command::new("sudo")
+            .arg("install")
+            .arg("-m")
+            .arg("644")
+            .arg("-o")
+            .arg("root")
+            .arg("-g")
+            .arg("root")
+            .arg(temp_file.path())
+            .arg(dns_conf)
+            .status()?;
+        if !status.success() {
+            eprintln!(
+                "{}",
+                "❌ Failed to update dnscrypt-proxy.toml with Cloudflare.".red()
+            );
+            return Err(std::io::Error::other(
+                "Failed to update dnscrypt-proxy.toml",
+            ));
+        }
+    }
     // 3. Enable the service
-    run_cmd("sudo", &["systemctl", "enable", "--now", "dnscrypt-proxy"]);
+    run_cmd("sudo", &["systemctl", "enable", "--now", "dnscrypt-proxy"])?;
 
     // 4. Clean up old Cloudflared artifacts if they exist
-    let _ = Command::new("sudo")
+    Command::new("sudo")
         .args(["systemctl", "disable", "--now", "cloudflared-dns"])
-        .status();
-    let _ = Command::new("sudo")
+        .status()?;
+    Command::new("sudo")
         .args(["rm", "-f", "/etc/systemd/system/cloudflared-dns.service"])
-        .status();
-    let _ = Command::new("sudo")
+        .status()?;
+    Command::new("sudo")
         .args(["systemctl", "daemon-reload"])
-        .status();
+        .status()?;
+    Ok(())
+}
 
-    // --- ENVIRONMENT & LOGIND ---
-    println!("    🔧 Configuring Session Environment (PATH)...");
-    let env_dir = dirs::home_dir().unwrap().join(".config/environment.d");
-    let env_file = env_dir.join("99-cargo-path.conf");
+///Configures the user's shell to Zsh and sets up Tmux Plugin Manager for enhanced terminal
+///experience.
+fn configure_shell() -> Result<(), std::io::Error> {
+    println!("    🔧 Setting Shell to Zsh...");
+    let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
+    Command::new("sudo")
+        .args(["chsh", "-s", "/usr/bin/zsh", &user])
+        .output()?;
 
-    if fs::create_dir_all(&env_dir).is_ok() {
-        let content = "PATH=$HOME/.cargo/bin:$PATH\n";
-        let _ = fs::write(&env_file, content);
+    println!("    ✨ Setting up Tmux Plugin Manager...");
+    let home = dirs::home_dir()
+        .ok_or_else(|| std::io::Error::other("Could not determine home directory"))?;
+    let tpm_dir = home.join(".tmux/plugins/tpm");
+    if !tpm_dir.exists() {
+        Command::new("git")
+            .arg("clone")
+            .arg("https://github.com/tmux-plugins/tpm")
+            .arg(tpm_dir)
+            .status()?;
     }
+    Ok(())
+}
 
+///Configures systemd-logind to ensure that user processes are killed on logout, preventing
+///lingering sessions and resource leaks.
+fn configure_logind() -> Result<(), std::io::Error> {
     println!("    🔧 Configuring Logind...");
     let logind_conf = "/etc/systemd/logind.conf";
-    run_cmd(
-        "sudo",
-        &[
-            "sed",
-            "-i",
-            "s/#KillUserProcesses=no/KillUserProcesses=yes/",
-            logind_conf,
-        ],
-    );
-    run_cmd(
-        "sudo",
-        &[
-            "sed",
-            "-i",
-            "s/KillUserProcesses=no/KillUserProcesses=yes/",
-            logind_conf,
-        ],
-    );
+    let content = fs::read_to_string(logind_conf)?;
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let mut found = false;
+    let mut modified = false;
+    for line in &mut lines {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("KillUserProcesses=") || trimmed.starts_with("#KillUserProcesses=") {
+            if trimmed == "KillUserProcesses=yes" {
+                println!("   ✅ KillUserProcesses is already set to yes.");
+                found = true;
+                break;
+            }
+            found = true;
+            modified = true;
+            *line = "KillUserProcesses=yes".to_string();
+            break;
+        }
+    }
+    if !found {
+        // If the setting is not found, we add it under the [Login] section
+        let login_section = lines.iter().position(|l| l.trim() == "[Login]");
+        if let Some(idx) = login_section {
+            lines.insert(idx + 1, "KillUserProcesses=yes".to_string());
+        } else {
+            // If [Login] section doesn't exist, append it at the end
+            lines.push("[Login]".to_string());
+            lines.push("KillUserProcesses=yes".to_string());
+        }
+        modified = true;
+    }
+    if modified {
+        let mut temp_file = NamedTempFile::new()?;
+        temp_file.write_all(lines.join("\n").as_bytes())?;
+        let status = Command::new("sudo")
+            .arg("install")
+            .arg("-m")
+            .arg("644")
+            .arg("-o")
+            .arg("root")
+            .arg("-g")
+            .arg("root")
+            .arg(temp_file.path())
+            .arg(logind_conf)
+            .status()?;
+        if !status.success() {
+            eprintln!(
+                "{}",
+                "❌ Failed to update logind.conf with KillUserProcesses.".red()
+            );
+            return Err(std::io::Error::other("Failed to update logind.conf"));
+        }
+    }
+    Ok(())
+}
 
+/// Configures Greetd with a custom tuigreet session and disables other DMs.
+fn configure_greetd() -> Result<(), std::io::Error> {
     println!("    🔧 Configuring Greetd...");
     let greetd_config = r#"
 [terminal]
@@ -788,48 +920,33 @@ vt = 1
 command = "tuigreet --time --remember --sessions /usr/share/wayland-sessions:/usr/share/xsessions"
 user = "greeter"
 "#;
-    let _ = fs::write("./greetd_config.toml", greetd_config);
+    fs::write("./greetd_config.toml", greetd_config)?;
     run_cmd(
         "sudo",
         &["mv", "./greetd_config.toml", "/etc/greetd/config.toml"],
-    );
-    let _ = Command::new("sudo")
+    )?;
+    Command::new("sudo")
         .args(["systemctl", "disable", "gdm", "sddm", "lightdm"])
-        .status();
+        .status()?;
     run_cmd(
         "sudo",
         &["systemctl", "enable", "--force", "greetd.service"],
-    );
-
-    println!("    🔧 Setting Shell to Zsh...");
-    let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
-    let _ = Command::new("sudo")
-        .args(["chsh", "-s", "/usr/bin/zsh", &user])
-        .output();
-
-    println!("    ✨ Setting up Tmux Plugin Manager...");
-    let tpm_dir = dirs::home_dir().unwrap().join(".tmux/plugins/tpm");
-    if !tpm_dir.exists() {
-        let _ = Command::new("git")
-            .args([
-                "clone",
-                "https://github.com/tmux-plugins/tpm",
-                tpm_dir.to_str().unwrap(),
-            ])
-            .status();
-    }
+    )?;
+    Ok(())
 }
 
-fn run_cmd(cmd: &str, args: &[&str]) {
-    let status = Command::new(cmd).args(args).status();
-    match status {
-        Ok(s) if s.success() => {} // All good
-        _ => {
-            eprintln!("❌ Critical Error: Failed to run {} {:?}", cmd, args);
-            std::process::exit(1);
-        }
+/// Helper to run a command and check for success, returning an error if it fails.
+fn run_cmd(cmd: &str, args: &[&str]) -> Result<(), std::io::Error> {
+    let status = Command::new(cmd).args(args).status()?;
+    if !status.success() {
+        return Err(std::io::Error::other(format!(
+            "Command '{}' with args {:?} failed",
+            cmd, args
+        )));
     }
+    Ok(())
 }
+
 /// Gleans pacman.conf to remove unwanted sessions and prevent future installs.
 /// Gnome installs a lot of sessions we don't need, this keeps the list clean.
 fn optimize_pacman_config() {
