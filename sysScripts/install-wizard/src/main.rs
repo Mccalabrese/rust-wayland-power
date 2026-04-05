@@ -121,11 +121,26 @@ fn main() {
             "\n{}",
             "⚔️  Resolving Audio Conflicts (Removing jack2)...".yellow()
         );
-        let _ = Command::new("sudo")
-            .args(["pacman", "-Rdd", "--noconfirm", "jack2"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+
+        if Command::new("which")
+            .arg("jackd")
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            println!("   👉 Detected 'jackd' in PATH. Removing 'jack2' to prevent conflicts...");
+            let _ = Command::new("sudo")
+                .args(["pacman", "-Rdd", "--noconfirm", "jack2"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        } else {
+            println!("   ✅ No JACK audio server detected. Skipping removal.");
+        }
+        //let _ = Command::new("sudo")
+        //    .args(["pacman", "-Rdd", "--noconfirm", "jack2"])
+        //    .stdout(Stdio::null())
+        //    .stderr(Stdio::null())
+        //    .status();
 
         // GPU Drivers Checkpoint & Exit Logic
         let state_file = dirs::home_dir()
@@ -287,10 +302,11 @@ fn main() {
 
         if let Err(e) = configure_system() {
             eprintln!("   ❌ Failed to configure system services: {}", e);
+            std::process::exit(1);
         }
 
         if let Err(e) = setup_librewolf() {
-            eprintln!("   ❌ Failed to configure LibreWolf: {}", e);
+            eprintln!("   ⚠️ Failed to configure LibreWolf: {}", e);
         }
         setup_waybar_configs();
         setup_secrets_and_geoclue();
@@ -468,7 +484,7 @@ fn install_nvidia_legacy_580() -> Result<(), std::io::Error> {
             format!("{}\n\n[options]\n{}", content, ignore_line)
         };
         let mut temp_file = NamedTempFile::new()?;
-        temp_file.write_all(patched_content.as_bytes())?;
+        writeln!(temp_file, "{}", patched_content)?;
         let status = Command::new("sudo")
             .arg("install")
             .arg("-m")
@@ -599,18 +615,24 @@ fn setup_librewolf() -> Result<(), std::io::Error> {
     fs::write(&override_file, config_content)?;
     // Set as Default Browser (XDG)
     println!("   👉 Setting LibreWolf as default browser...");
+    let mimes = [
+        "text/html",
+        "x-scheme-handler/http",
+        "x-scheme-handler/https",
+    ];
 
-    Command::new("xdg-settings")
+    for mime in mimes {
+        let _ = Command::new("xdg-mime")
+            .args(["default", "librewolf.desktop", mime])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = Command::new("xdg-settings")
         .args(["set", "default-web-browser", "librewolf.desktop"])
-        .status()?;
-
-    Command::new("xdg-mime")
-        .args(["default", "librewolf.desktop", "x-scheme-handler/http"])
-        .status()?;
-
-    Command::new("xdg-mime")
-        .args(["default", "librewolf.desktop", "x-scheme-handler/https"])
-        .status()?;
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     Ok(())
 }
 
@@ -738,7 +760,7 @@ fn sanitize_mkinitcpio() -> Result<(), std::io::Error> {
                 lines.push(last_line);
             }
             let mut temp_file = NamedTempFile::new()?;
-            temp_file.write_all(lines.join("\n").as_bytes())?;
+            writeln!(temp_file, "{}", lines.join("\n"))?;
             let status = Command::new("sudo")
                 .arg("install")
                 .arg("-m")
@@ -765,10 +787,16 @@ fn configure_dns() -> Result<(), std::io::Error> {
     println!("   🔧 Configuring dnscrypt-proxy (DNS Proxy)...");
 
     // 1. Ensure package is installed (failsafe)
-    Command::new("sudo")
+    let status = Command::new("sudo")
         .args(["pacman", "-S", "--needed", "--noconfirm", "dnscrypt-proxy"])
         .status()?;
-
+    if !status.success() {
+        eprintln!(
+            "{}",
+            "❌ Failed to install dnscrypt-proxy. DNS configuration aborted.".red()
+        );
+        return Err(std::io::Error::other("Failed to install dnscrypt-proxy"));
+    }
     // 2. Configure TOML to use Cloudflare
     let dns_conf = "/etc/dnscrypt-proxy/dnscrypt-proxy.toml";
     let content = fs::read_to_string(dns_conf)?;
@@ -794,7 +822,7 @@ fn configure_dns() -> Result<(), std::io::Error> {
     }
     if modified {
         let mut temp_file = NamedTempFile::new()?;
-        temp_file.write_all(lines.join("\n").as_bytes())?;
+        writeln!(temp_file, "{}", lines.join("\n"))?;
         let status = Command::new("sudo")
             .arg("install")
             .arg("-m")
@@ -892,7 +920,7 @@ fn configure_logind() -> Result<(), std::io::Error> {
     }
     if modified {
         let mut temp_file = NamedTempFile::new()?;
-        temp_file.write_all(lines.join("\n").as_bytes())?;
+        writeln!(temp_file, "{}", lines.join("\n"))?;
         let status = Command::new("sudo")
             .arg("install")
             .arg("-m")

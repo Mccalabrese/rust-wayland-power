@@ -34,6 +34,7 @@ hyprlock
 swayidle
 hypridle
 xdg-user-dirs-gtk
+xdg-utils
 greetd
 greetd-tuigreet
 xwayland-satellite
