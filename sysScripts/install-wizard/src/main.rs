@@ -33,18 +33,18 @@ const TURING_IDS: &[&str] = &[
 ];
 
 // --- Enums for Hardware Detection ---
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum NvidiaArch {
-    Turing,
     Modern,
+    Turing,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum GpuVendor {
-    Nvidia(NvidiaArch),
-    Amd,
-    Intel,
     Unknown,
+    Intel,
+    Amd,
+    Nvidia(NvidiaArch),
 }
 
 // Hardware Specific: NVIDIA
@@ -336,6 +336,8 @@ fn detect_gpu() -> GpuVendor {
         eprintln!("⚠️ Failed to read PCI devices. Defaulting to Unknown");
         return GpuVendor::Unknown;
     };
+    let mut gpus = Vec::new();
+
     for entry in entries.flatten() {
         let path = entry.path();
         let class_path = path.join("class");
@@ -359,17 +361,18 @@ fn detect_gpu() -> GpuVendor {
                         || dev.starts_with("0x1f")
                         || dev.starts_with("0x21")
                     {
-                        return GpuVendor::Nvidia(NvidiaArch::Turing);
+                        gpus.push(GpuVendor::Nvidia(NvidiaArch::Turing));
+                    } else {
+                        gpus.push(GpuVendor::Nvidia(NvidiaArch::Modern));
                     }
-                    return GpuVendor::Nvidia(NvidiaArch::Modern);
                 }
-                "0x1002" => return GpuVendor::Amd,
-                "0x8086" => return GpuVendor::Intel,
+                "0x1002" => gpus.push(GpuVendor::Amd),
+                "0x8086" => gpus.push(GpuVendor::Intel),
                 _ => continue,
             }
         }
     }
-    GpuVendor::Unknown
+    gpus.into_iter().max().unwrap_or(GpuVendor::Unknown) // If multiple GPUs, we prioritize NVIDIA > AMD > Intel
 }
 
 /// Scans /sys/class/drm to find the integrated GPU (Intel or AMD).
