@@ -14,7 +14,7 @@
 //! 5. **Safety:** Implements "Fail Fast" logic—if a critical step fails, the installer halts immediately.
 
 use colored::*;
-use inquire::{Select, Text};
+use inquire::Text;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -272,7 +272,9 @@ fn main() {
         "\n{}",
         "⚙️  Applying System Configurations...".blue().bold()
     );
-    optimize_pacman_config();
+    if let Err(e) = optimize_pacman_config() {
+        eprintln!("   ❌ Failed to optimize pacman configuration: {}", e);
+    }
 
     // 3. Hardware Enforcement
     let current_gpu = detect_gpu();
@@ -992,7 +994,7 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Result<(), std::io::Error> {
 
 /// Gleans pacman.conf to remove unwanted sessions and prevent future installs.
 /// Gnome installs a lot of sessions we don't need, this keeps the list clean.
-fn optimize_pacman_config() {
+fn optimize_pacman_config() -> Result<(), std::io::Error> {
     println!("   🔧 Optimizing pacman.conf & Cleaning Sessions...");
 
     let sessions_to_remove = vec![
@@ -1002,21 +1004,48 @@ fn optimize_pacman_config() {
     ];
 
     for session in sessions_to_remove {
-        let _ = Command::new("sudo").args(["rm", "-f", session]).output();
+        Command::new("sudo").args(["rm", "-f", session]).output()?;
     }
 
     let pacman_conf = "/etc/pacman.conf";
-    let content = fs::read_to_string(pacman_conf).unwrap_or_default();
+    let content = fs::read_to_string(pacman_conf)?;
 
     if content.contains("NoExtract = usr/share/wayland-sessions/niri.desktop") {
         //println!("   👉 Injecting NoExtract rules into [options]...");
         println!("   👉 Removing old NoExtract rules to allow session updates...");
-        // Sed to delete lines containing "wayland-sessions"
-        let _ = Command::new("sudo")
-            .args(["sed", "-i", "/wayland-sessions/d", pacman_conf])
-            .status();
+        let temp_content = content
+            .lines()
+            .filter(|line| {
+                !line
+                    .trim_start()
+                    .starts_with("NoExtract = usr/share/wayland-sessions/")
+            })
+            .collect::<Vec<&str>>()
+            .join("\n");
+        let mut temp_file = NamedTempFile::new()?;
+        writeln!(temp_file, "{}", temp_content)?;
+        let status = Command::new("sudo")
+            .arg("install")
+            .arg("-m")
+            .arg("644")
+            .arg("-o")
+            .arg("root")
+            .arg("-g")
+            .arg("root")
+            .arg(temp_file.path())
+            .arg(pacman_conf)
+            .status()?;
+        if !status.success() {
+            eprintln!(
+                "{}",
+                "❌ Failed to update pacman.conf for session optimization.".red()
+            );
+            return Err(std::io::Error::other("Failed to update pacman.conf"));
+        }
     }
+    Ok(())
 }
+
 /// Applies specific fixes for NVIDIA on Wayland.
 /// 1. Sets kernel parameters (`nvidia_drm.modeset=1`).
 /// 2. Creates modprobe rules to fix suspend/resume.
