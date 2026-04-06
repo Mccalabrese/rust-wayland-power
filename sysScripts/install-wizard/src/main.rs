@@ -1263,99 +1263,14 @@ fn setup_secrets_and_geoclue(home: &Path) {
     } else {
         println!("   ⚠️  No Google API Key provided. Location services may fail.");
     }
-    let term_choice = Select::new("Preferred Terminal:", vec!["ghostty", "alacritty", "kitty"])
-        .prompt()
-        .unwrap_or("ghostty");
     if config_path.exists() {
         println!("   ℹ️  config.toml already exists. Skipping write.");
         return;
     }
 
-    let config_content = format!(
-        r#"[global]
-pager = "bat --paging=always --style=plain"
-terminal = "{}"
-
-[waybar_weather]
-owm_api_key = "{}"
-
-[waybar_finance]
-api_key = "{}"
-stocks = ["SPY", "QQQ", "NVDA"]
-
-[wallpaper_manager]
-wallpaper_dir = "{}/Pictures/Wallpapers"
-swww_params = ["--transition-fps", "60", "--transition-type", "any", "--transition-duration", "2"]
-swaybg_cache_file = "swaybg_last_wallpaper"
-cache_file = "~/.cache/wallpapers.json"
-rofi_config_path = "~/.config/rofi/config-wallpaper.rasi"
-rofi_theme_override = "element-icon {{ size: 20%; }}"
-
-[update_check]
-command_string = "nm-online -q -t 5 && (checkupdates; yay -Qua) || true"
-cache_file = "~/.cache/update-check.json"
-stale_icon = "⚠"
-error_icon = "!"
-
-[updater]
-update_command = ["yay", "-Syu"]
-icon_success = "/usr/share/icons/Adwaita/48x48/status/software-update-available.png"
-icon_error = "/usr/share/icons/Adwaita/48x48/status/dialog-error.png"
-window_title = "System Update"
-
-[waybar_switcher]
-target_file = "/tmp/waybar-config.jsonc"
-niri_config = "~/.config/waybar/niriConfig.jsonc"
-sway_config = "~/.config/waybar/swayConfig.jsonc"
-
-[cloudflare_toggle]
-text_on = "󰅟"
-class_on = "on"
-text_off = "⚠︎"
-class_off = "off"
-service_name = "dnscrypt-proxy"
-resolv_content_on = "nameserver 127.0.0.1"
-resolv_content_off = "nameserver 1.1.1.1\nnameserver 1.0.0.1"
-bar_process_name = "waybar"
-bar_signal_num = 10
-
-[clip_manager]
-rofi_config = "~/.config/rofi/config-clipboard.rasi"
-message = "CTRL+DEL = Delete Entry | ALT+DEL = Wipe History"
-
-[emoji_picker]
-rofi_config = "~/.config/rofi/config-emoji.rasi"
-message = "Search Emojis (Name or Keyword)"
-
-[radio_menu]
-rofi_config = "~/.config/rofi/config-radio.rasi"
-message = "Radio Menu"
-
-[kb_launcher.compositor_args]
-sway = ["--title=KeybindCheatSheetApp"]
-niri = ["--title=KeybindCheatSheet"]
-default = []
-
-[[kb_launcher.sheet]]
-name = "Niri"
-file = "~/.config/niri/keybinds_niri.txt"
-compositor = "niri"
-
-[[kb_launcher.sheet]]
-name = "Sway"
-file = "~/.config/sway/keybinds_sway.txt"
-compositor = "sway"
-
-[[kb_launcher.sheet]]
-name = "Neovim"
-file = "~/.config/nvim/keybinds_nvim.txt"
-"#,
-        term_choice,
-        weather_api,
-        finnhub_api,
-        home.display()
-    );
-
+    let template = include_str!("../../../.config/rust-dotfiles/config.toml.template")
+        .replace("YOUR_SECRET_OWM_KEY_HERE", &weather_api)
+        .replace("YOUR_FINNHUB_KEY_HERE", &finnhub_api);
     // Logic to handle if 'rust-dotfiles' exists as a file instead of a directory
     if config_dir.exists() {
         if !config_dir.is_dir() {
@@ -1371,7 +1286,7 @@ file = "~/.config/nvim/keybinds_nvim.txt"
     options.write(true).create(true).truncate(true).mode(0o600);
     match options.open(&config_path) {
         Ok(mut file) => {
-            file.write_all(config_content.as_bytes())
+            file.write_all(template.as_bytes())
                 .expect("Failed to write secure config.toml");
             println!("  ✅ Config generated securely at {:?}", config_path);
         }

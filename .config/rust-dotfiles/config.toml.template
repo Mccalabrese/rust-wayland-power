@@ -46,7 +46,6 @@ swww_params = [
     "--transition-bezier", ".43,1.19,1,.4"
 ]
 swaybg_cache_file = "swaybg_last_wallpaper"
-hyprland_refresh_script = "~/.config/hypr/scripts/Refresh.sh"
 cache_file = "~/.cache/wallpapers.json"
 rofi_config_path = "~/.config/rofi/config-wallpaper.rasi"
 rofi_theme_override = "element-icon { size: 20%; }"
