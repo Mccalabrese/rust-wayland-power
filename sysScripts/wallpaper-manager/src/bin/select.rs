@@ -7,19 +7,20 @@
 //! 4. Uses `rofi` as a GUI frontend to display thumbnails and filter results.
 //! 5. Delegates the final action to `wp-apply`.
 
-use std::fs;
-use std::env;
-use std::io::Write;
-use std::path::{PathBuf, Path};
-use std::process::{Command, Stdio};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
+use std::env;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 fn expand_path(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
     PathBuf::from(path)
 }
 
@@ -29,7 +30,6 @@ struct WallpaperManagerConfig {
     wallpaper_dir: String,
     swww_params: Vec<String>,
     swaybg_cache_file: String,
-    hyprland_refresh_script: String,
     cache_file: String,
     rofi_config_path: String,
     rofi_theme_override: String,
@@ -45,20 +45,20 @@ fn load_config() -> Result<GlobalConfig> {
         .context("Cannot find home dir")?
         .join(".config/rust-dotfiles/config.toml");
 
-    let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path: {}", config_path.display()))?;
+    let config_str = fs::read_to_string(&config_path).with_context(|| {
+        format!(
+            "Failed to read config file from path: {}",
+            config_path.display()
+        )
+    })?;
 
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
-    
+
     Ok(config)
 }
 // --- IPC Structures ---
-// These match the JSON output of hyprctl and swaymsg
-#[derive(Deserialize, Debug)]
-struct HyprMonitor {
-    name: String,
-}
+// These match the JSON output of and swaymsg
 #[derive(Deserialize, Debug)]
 struct SwayMonitor {
     name: String,
@@ -73,15 +73,21 @@ struct Wallpaper {
 /// Heuristic to determine the running Window Manager.
 /// Checks IPC sockets and Environment variables.
 fn get_compositor() -> String {
-    if env::var("NIRI_SOCKET").is_ok() { return "niri".to_string(); }
-    if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() { return "hyprland".to_string(); }
-    if env::var("SWAYSOCK").is_ok() { return "sway".to_string(); }
-    
+    if env::var("NIRI_SOCKET").is_ok() {
+        return "niri".to_string();
+    }
+    if env::var("SWAYSOCK").is_ok() {
+        return "sway".to_string();
+    }
+
     if let Ok(desktop) = env::var("XDG_CURRENT_DESKTOP") {
         let d = desktop.to_lowercase();
-        if d.contains("niri") { return "niri".to_string(); }
-        if d.contains("hypr") { return "hyprland".to_string(); }
-        if d.contains("sway") { return "sway".to_string(); }
+        if d.contains("niri") {
+            return "niri".to_string();
+        }
+        if d.contains("sway") {
+            return "sway".to_string();
+        }
     }
     "unknown".to_string()
 }
@@ -90,24 +96,17 @@ fn get_compositor() -> String {
 fn get_monitor_list(compositor: &str) -> Result<Vec<String>> {
     let output;
     match compositor {
-        "hyprland" => {
-            // Parse `hyprctl monitors -j`
-            output = Command::new("hyprctl").arg("-j").arg("monitors").output()?;
-            if !output.status.success() {
-                anyhow::bail!("hyprctl command failed");
-            }
-            let monitors: Vec<HyprMonitor> = serde_json::from_slice(&output.stdout)
-                .context("Failed to parse hyprctl JSON")?;
-            Ok(monitors.into_iter().map(|m| m.name).collect())
-        }
         "sway" => {
             // Parse `swaymsg -t get_outputs`
-            output = Command::new("swaymsg").arg("-t").arg("get_outputs").output()?;
+            output = Command::new("swaymsg")
+                .arg("-t")
+                .arg("get_outputs")
+                .output()?;
             if !output.status.success() {
                 anyhow::bail!("swaymsg command failed");
             }
-            let monitors: Vec<SwayMonitor> = serde_json::from_slice(&output.stdout)
-                .context("Failed to parse swaymsg JSON")?;
+            let monitors: Vec<SwayMonitor> =
+                serde_json::from_slice(&output.stdout).context("Failed to parse swaymsg JSON")?;
             Ok(monitors
                 .into_iter()
                 .filter(|m| m.active)
@@ -152,7 +151,11 @@ fn ask_rofi(prompt: &str, items: Vec<String>, config: Option<(&Path, &str)>) -> 
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
     let mut child = cmd.spawn().context("Failed to spawn rofi")?;
     // Write options to rofi
-    child.stdin.as_mut().unwrap().write_all(items_str.as_bytes())?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(items_str.as_bytes())?;
     let output = child.wait_with_output()?;
     if !output.status.success() {
         anyhow::bail!("Rofi was cancelled");
@@ -189,19 +192,22 @@ fn main() -> Result<()> {
     wallpapers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     // Build Rofi Menu with Icons
     // Rofi supports icons via the `\0icon\x1f` delimiter syntax.
-    let rofi_items: Vec<String> = wallpapers.iter().map(|wp| {
-        format!("{}\0icon\x1f{}", wp.name, wp.thumb_path.to_string_lossy())
-    }).collect();
+    let rofi_items: Vec<String> = wallpapers
+        .iter()
+        .map(|wp| format!("{}\0icon\x1f{}", wp.name, wp.thumb_path.to_string_lossy()))
+        .collect();
     let rofi_conf_path = expand_path(&config.rofi_config_path);
     // User Interaction (Wallpaper Selection)
     let selection_name = ask_rofi(
         "Select Wallpaper🐧",
         rofi_items,
-        Some((&rofi_conf_path, &config.rofi_theme_override))
+        Some((&rofi_conf_path, &config.rofi_theme_override)),
     )?;
     // Execution
     // Determine the absolute path of the sibling binary `wp-apply` and execute it.
-    let selected_wp = wallpapers.into_iter().find(|w| w.name == selection_name)
+    let selected_wp = wallpapers
+        .into_iter()
+        .find(|w| w.name == selection_name)
         .ok_or_else(|| anyhow!("Selected wallpaper not found in cache"))?;
     let current_exe = env::current_exe()?;
     let apply_path = current_exe.parent().unwrap().join("wp-apply");

@@ -6,22 +6,23 @@
 //! 3. Maintains a JSON cache for the selection tool to read instantly.
 //! 4. Uses `notify` to watch for filesystem changes in real-time.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::channel;
-use std::collections::HashSet;
 use anyhow::{Context, Result};
 use image::imageops::FilterType;
 use notify::{RecursiveMode, Watcher};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
 use walkdir::WalkDir;
 
 fn expand_path(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
     PathBuf::from(path)
 }
 
@@ -46,12 +47,16 @@ fn load_config() -> Result<GlobalConfig> {
         .context("Cannot find home dir")?
         .join(".config/rust-dotfiles/config.toml");
 
-    let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path: {}", config_path.display()))?;
+    let config_str = fs::read_to_string(&config_path).with_context(|| {
+        format!(
+            "Failed to read config file from path: {}",
+            config_path.display()
+        )
+    })?;
 
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
-    
+
     Ok(config)
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -76,7 +81,7 @@ fn ensure_thumbnail(original_path: &Path, thumb_dir: &Path) -> Option<PathBuf> {
         Ok(img) => img,
         Err(_) => return None, // Skip unreadable/corrupt files
     };
-    // Resize using Nearest Neighbor for speed, or Lanczos3 for quality. 
+    // Resize using Nearest Neighbor for speed, or Lanczos3 for quality.
     // Nearest is chosen here for performance on large directories.
     let thumb = img.resize(THUMB_WIDTH, u32::MAX, FilterType::Nearest);
     if let Err(e) = thumb.save(&thumb_path) {
@@ -104,7 +109,8 @@ fn scan_and_update_cache(wall_dir: &Path, cache_file: &Path) -> Result<()> {
         .collect();
     // Process Images (Parallel CPU)
     // Rayon (.par_iter) distributes image resizing across all available CPU cores.
-    let wallpapers: Vec<Wallpaper> = entries.par_iter()
+    let wallpapers: Vec<Wallpaper> = entries
+        .par_iter()
         .filter_map(|path| {
             // Skip video wallpapers (mp4, mkv) as image crate cannot handle them
             if let Some(ext) = path.extension() {
@@ -126,9 +132,7 @@ fn scan_and_update_cache(wall_dir: &Path, cache_file: &Path) -> Result<()> {
     fs::write(cache_file, json).context("Failed to write cache file")?;
     //Garbage Collection
     // Remove thumbnails for wallpapers that no longer exist.
-    let good_thumbs: HashSet<PathBuf> = wallpapers.into_iter()
-        .map(|w| w.thumb_path)
-        .collect();
+    let good_thumbs: HashSet<PathBuf> = wallpapers.into_iter().map(|w| w.thumb_path).collect();
     for entry in fs::read_dir(&thumb_dir)? {
         let entry = entry?;
         let thumb_path = entry.path();
@@ -166,16 +170,21 @@ fn main() -> Result<()> {
                 // We only care if a file was created, modified (content), or removed.
                 use notify::EventKind;
                 match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(notify::event::ModifyKind::Data(_)) | EventKind::Remove(_) => {
-                        println!("Relevant change detected ({:?}). Refreshing cache...", event.kind);
+                    EventKind::Create(_)
+                    | EventKind::Modify(notify::event::ModifyKind::Data(_))
+                    | EventKind::Remove(_) => {
+                        println!(
+                            "Relevant change detected ({:?}). Refreshing cache...",
+                            event.kind
+                        );
                         // Debounce? (Optional optimization, but this filter usually fixes the loop)
                         if let Err(e) = scan_and_update_cache(&wall_dir, &cache_file) {
                             eprintln!("Error updating cache: {}", e);
                         }
-                    },
+                    }
                     _ => {} // Ignore everything else (Access, Chmod, etc.)
                 }
-            },
+            }
             Err(e) => eprintln!("Watch error {:?}", e),
         }
     }

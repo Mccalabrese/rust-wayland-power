@@ -4,19 +4,20 @@
 //! It abstracts away the differences between Wayland compositors (Hyprland, Sway, Niri)
 //! so the selection tool doesn't need to know the implementation details.
 
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use anyhow::{Context, Result};
-use std::fs;
-use serde::Deserialize;
 
 /// Resolves shell-style paths (e.g., "~/Pictures") to absolute system paths.
 fn expand_path(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
     PathBuf::from(path)
 }
 
@@ -39,12 +40,16 @@ fn load_config() -> Result<GlobalConfig> {
         .context("Cannot find home dir")?
         .join(".config/rust-dotfiles/config.toml");
 
-    let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config file from path: {}", config_path.display()))?;
+    let config_str = fs::read_to_string(&config_path).with_context(|| {
+        format!(
+            "Failed to read config file from path: {}",
+            config_path.display()
+        )
+    })?;
 
     let config: GlobalConfig = toml::from_str(&config_str)
         .context("Failed to parse config.toml. Check for syntax errors.")?;
-    
+
     Ok(config)
 }
 
@@ -57,7 +62,12 @@ fn pkill(name: &str) {
 
 /// Applies wallpaper using `awww` (Solution for Hyprland/Niri).
 /// Supports animated transitions and per-monitor namespaces.
-fn apply_awww_wallpaper(selected_file: &Path, monitor: &str, namespace: &str, swww_params: &[String]) -> Result<()> {
+fn apply_awww_wallpaper(
+    selected_file: &Path,
+    monitor: &str,
+    namespace: &str,
+    swww_params: &[String],
+) -> Result<()> {
     println!("Applying wallpaper via awww (namespace: {})...", namespace);
     // Clean up incompatible daemons
     pkill("mpvpaper");
@@ -73,7 +83,7 @@ fn apply_awww_wallpaper(selected_file: &Path, monitor: &str, namespace: &str, sw
     std::thread::sleep(std::time::Duration::from_millis(100));
     // Send the image command
     Command::new("awww")
-        .arg("img") 
+        .arg("img")
         .arg("--namespace")
         .arg(namespace)
         .arg("-o")
