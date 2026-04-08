@@ -11,22 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Resolves shell-style paths (e.g., "~/Pictures") to absolute system paths.
-fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(stripped);
-    }
-    PathBuf::from(path)
-}
-
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 struct WallpaperManagerConfig {
-    swww_params: Vec<String>,        // Transition effects for swww
-    swaybg_cache_file: String,       // Where Sway stores its current state
-    hyprland_refresh_script: String, // Hook to reload Hyprland colors (e.g., Pywal)
+    swww_params: Vec<String>,  // Transition effects for swww
+    swaybg_cache_file: String, // Where Sway stores its current state
     wallpaper_dir: String,
 }
 
@@ -131,12 +120,6 @@ fn main() -> Result<()> {
 
     // Strategy Pattern: Dispatch based on the detected environment
     match compositor.as_str() {
-        "hyprland" => {
-            apply_awww_wallpaper(&wallpaper_path, monitor, "hypr", &config.swww_params)?;
-            // Trigger hook to update system colors (e.g. Waybar styles)
-            let refresh_script = expand_path(&config.hyprland_refresh_script);
-            Command::new("bash").arg(refresh_script).status()?;
-        }
         "niri" => {
             // Niri uses the same backend (awww) but a isolated namespace
             apply_awww_wallpaper(&wallpaper_path, monitor, "niri", &config.swww_params)?;
