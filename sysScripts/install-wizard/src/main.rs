@@ -314,7 +314,9 @@ fn main() {
             eprintln!("   ⚠️ Failed to configure LibreWolf: {}", e);
         }
         setup_waybar_configs(&home);
-        setup_secrets_and_geoclue(&home);
+        if let Err(e) = setup_secrets_and_geoclue(&home) {
+            eprintln!("   ⚠️ Failed to set up secrets and geoclue: {}", e);
+        }
         finalize_setup(&home); // Neovim/Tmux plugins
 
         print_logo();
@@ -1220,106 +1222,155 @@ fn setup_waybar_configs(home: &Path) {
 }
 /// Interactive wizard to generate the local `config.toml`.
 /// Validates input to prevent injection attacks before writing to system files (like /etc/geoclue).
-fn setup_secrets_and_geoclue(home: &Path) {
+fn setup_secrets_and_geoclue(home: &Path) -> Result<(), std::io::Error> {
     let config_dir = home.join(".config/rust-dotfiles");
     let config_path = config_dir.join("config.toml");
-
-    let wallpaper_path = home.join("Pictures/Wallpapers");
-    fs::create_dir_all(&wallpaper_path).expect("Failed to create wallpaper dir");
-
-    println!("   🧙 We need to generate your central config.toml and configure Location Services.");
-
-    let weather_api = Text::new("Enter OpenWeatherMap API Key (get one by making a free account at https://home.openweathermap.org/users/sign_up):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
-    let finnhub_api = Text::new(
-        "Enter Finnhub.io API Key (get one by making a free account at finnhub.io/register):",
-    )
-    .prompt()
-    .unwrap_or_else(|e| {
-        eprintln!("❌ Error: {}", e);
-        std::process::exit(1);
-    });
-
-    // SECURE FIX: Validation logic for keys to prevent injection
-    let google_geo_api = Text::new("Enter Google Geolocation API Key for Geoclue(get one at console.cloud.google.com/apis/library/geocoding-backend.googleapis.com):").prompt().unwrap_or_else(|e| { eprintln!("❌ Error: {}", e); std::process::exit(1); });
-
-    // --- GEOCLUE CONFIGURATION ---
-    if !google_geo_api.is_empty() {
-        println!("   🌍 Configuring Geoclue...");
-        let gc_path = "/etc/geoclue/geoclue.conf";
-
-        // 1. Ensure the wifi source is enabled (uncomment 'enable=true')
-        // We use a loose match to catch ';enable=true' or '#enable=true'
-        let _ = Command::new("sudo")
-            .args(["sed", "-i", "s/^.*enable=true/enable=true/", gc_path])
-            .status();
-
-        // 2. Inject the Key
-        // We look for the placeholder URL provided by the package and replace it.
-        // The default line usually looks like:
-        // #url=https://www.googleapis.com/geolocation/v1/geolocate?key=YOUR_KEY
-
-        // We construct a regex-like sed command to find the googleapis line (commented or not)
-        // and replace the WHOLE line with our active key.
-        let new_url = format!(
-            "url=https://www.googleapis.com/geolocation/v1/geolocate?key={}",
-            google_geo_api
-        );
-
-        // This sed command finds any line containing "googleapis.com" and replaces the entire line.
-        let status = Command::new("sudo")
-            .args([
-                "sed",
-                "-i",
-                &format!("s|^.*googleapis.com.*|{}|", new_url),
-                gc_path,
-            ])
-            .status();
-
-        match status {
-            Ok(s) if s.success() => {
-                let _ = Command::new("sudo")
-                    .args(["systemctl", "restart", "geoclue.service"])
-                    .output();
-                println!("   ✅ Geoclue Configured");
-            }
-            _ => eprintln!("   ❌ Failed to patch geoclue config."),
-        }
-    } else {
-        println!("   ⚠️  No Google API Key provided. Location services may fail.");
-    }
-    if config_path.exists() {
-        println!("   ℹ️  config.toml already exists. Skipping write.");
-        return;
-    }
-
-    let template = include_str!("../../../.config/rust-dotfiles/config.toml.template")
-        .replace("YOUR_SECRET_OWM_KEY_HERE", &weather_api)
-        .replace("YOUR_FINNHUB_KEY_HERE", &finnhub_api);
     // Logic to handle if 'rust-dotfiles' exists as a file instead of a directory
     if config_dir.exists() {
         if !config_dir.is_dir() {
             println!("   ⚠️  Found a file blocking config directory. Backing it up...");
             let backup = format!("{}.bak", config_dir.display());
-            std::fs::rename(&config_dir, &backup).expect("Failed to move blocking file");
-            std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+            std::fs::rename(&config_dir, &backup)?;
+            std::fs::create_dir_all(&config_dir)?;
         }
     } else {
-        std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+        std::fs::create_dir_all(&config_dir)?;
     }
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true).mode(0o600);
-    match options.open(&config_path) {
-        Ok(mut file) => {
-            file.write_all(template.as_bytes())
-                .expect("Failed to write secure config.toml");
-            println!("  ✅ Config generated securely at {:?}", config_path);
+
+    if !config_path.exists() {
+        println!(
+            "   🧙 We need to generate your central config.toml and configure Location Services."
+        );
+        let weather_api = Text::new("Enter OpenWeatherMap API Key (get one by making a free account at https://home.openweathermap.org/users/sign_up):").prompt().unwrap_or("YOUR_SECRET_OWM_KEY_HERE".to_string());
+        let finnhub_api = Text::new(
+            "Enter Finnhub.io API Key (get one by making a free account at finnhub.io/register):",
+        )
+        .prompt()
+        .unwrap_or("YOUR_FINNHUB_KEY_HERE".to_string());
+        let template = include_str!("../../../.config/rust-dotfiles/config.toml.template")
+            .replace("YOUR_SECRET_OWM_KEY_HERE", &weather_api)
+            .replace("YOUR_FINNHUB_KEY_HERE", &finnhub_api);
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true).mode(0o600);
+        match options.open(&config_path) {
+            Ok(mut file) => {
+                file.write_all(template.as_bytes())
+                    .expect("Failed to write secure config.toml");
+                println!("  ✅ Config generated securely at {:?}", config_path);
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to securely open config.toml: {}", e);
+                std::process::exit(1);
+            }
         }
-        Err(e) => {
-            eprintln!("❌ Failed to securely open config.toml: {}", e);
-            std::process::exit(1);
+    } else {
+        let contents = fs::read_to_string(&config_path)?;
+        if contents.contains("YOUR_SECRET_OWM_KEY") || contents.contains("YOUR_FINNHUB_KEY") {
+            let weather_api = Text::new("Enter OpenWeatherMap API Key (get one by making a free account at https://home.openweathermap.org/users/sign_up):").prompt().unwrap_or("YOUR_SECRET_OWM_KEY_HERE".to_string());
+            let finnhub_api = Text::new("Enter Finnhub.io API Key (get one by making a free account at finnhub.io/register):").prompt().unwrap_or("YOUR_FINNHUB_KEY_HERE".to_string());
+            let mut modified = false;
+            let mut lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
+            for line in &mut lines {
+                if line.contains("YOUR_SECRET_OWM_KEY") || line.contains("YOUR_FINNHUB_KEY") {
+                    *line = line
+                        .replace("YOUR_SECRET_OWM_KEY_HERE", &weather_api)
+                        .replace("YOUR_FINNHUB_KEY_HERE", &finnhub_api);
+                    modified = true;
+                }
+            }
+            if modified {
+                let mut temp_file = NamedTempFile::new()?;
+                write!(temp_file, "{}", lines.join("\n"))?;
+                let status = Command::new("sudo")
+                    .arg("install")
+                    .arg("-m")
+                    .arg("600")
+                    .arg("-o")
+                    .arg(std::env::var("USER").unwrap_or_else(|_| "root".to_string()))
+                    .arg("-g")
+                    .arg(std::env::var("USER").unwrap_or_else(|_| "root".to_string()))
+                    .arg(temp_file.path())
+                    .arg(&config_path)
+                    .status()?;
+                if !status.success() {
+                    eprintln!("{}", "❌ Failed to update config.toml with API keys.".red());
+                    return Err(std::io::Error::other("Failed to update config.toml"));
+                }
+            }
         }
     }
+    configure_geoclue()?;
+    let wallpaper_path = home.join("Pictures/Wallpapers");
+    if !wallpaper_path.exists() {
+        println!(
+            "   🖼️  Creating wallpaper directory at {:?}",
+            wallpaper_path
+        );
+        fs::create_dir_all(&wallpaper_path)?;
+    }
+    Ok(())
 }
+
+fn configure_geoclue() -> Result<(), std::io::Error> {
+    println!("   🌍 Configuring Geoclue...");
+    let gc_path = "/etc/geoclue/geoclue.conf";
+    let google_geo_api = Text::new("Enter Google Geolocation API Key for Geoclue(get one at console.cloud.google.com/apis/library/geocoding-backend.googleapis.com):").prompt().unwrap_or_default();
+    if google_geo_api.is_empty() {
+        println!("   ⚠️  No API key entered. Skipping Geoclue configuration.");
+        return Ok(());
+    }
+
+    let mut modified = false;
+    let new_url = format!(
+        "url=https://www.googleapis.com/geolocation/v1/geolocate?key={}",
+        google_geo_api
+    );
+    let content = fs::read_to_string(gc_path)?;
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    for line in &mut lines {
+        let normalized = line
+            .trim_start()
+            .trim_start_matches(['#', ';'])
+            .trim_start();
+        if normalized.starts_with("enable=") {
+            if normalized == "enable=true" {
+                println!("   ✅ Geoclue is already enabled.");
+                continue; // Already enabled
+            }
+            *line = "enable=true".to_string();
+            modified = true;
+        } else if normalized.contains("googleapis.com") && normalized != new_url {
+            *line = new_url.clone();
+            modified = true;
+        }
+    }
+    if !modified {
+        println!("   ⚠️  No changes needed for geoclue.conf. It may already be configured.");
+        return Ok(());
+    }
+    let mut temp_file = NamedTempFile::new()?;
+    writeln!(temp_file, "{}", lines.join("\n"))?;
+    let status = Command::new("sudo")
+        .arg("install")
+        .arg("-m")
+        .arg("644")
+        .arg("-o")
+        .arg("root")
+        .arg("-g")
+        .arg("root")
+        .arg(temp_file.path())
+        .arg(gc_path)
+        .status()?;
+    if !status.success() {
+        eprintln!(
+            "{}",
+            "   ❌ Failed to update geoclue.conf with API key.".red()
+        );
+        return Err(std::io::Error::other("Failed to update geoclue.conf"));
+    }
+    Ok(())
+}
+
 fn expected_binary_names(app_path: &Path, app_name: &str) -> HashSet<String> {
     let mut expected = HashSet::new();
 

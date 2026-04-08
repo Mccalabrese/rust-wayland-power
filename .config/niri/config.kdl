@@ -143,7 +143,10 @@ window-rule {
     default-window-height { fixed 600; }
 }
 
-
+window-rule {
+  match app-id="zoom" title="annotate_toolbar"
+  open-floating true
+}
 // Firefox PiP
 window-rule {
     match app-id=r"firefox$"
