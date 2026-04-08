@@ -1046,7 +1046,6 @@ fn optimize_pacman_config() -> Result<(), std::io::Error> {
     println!("   🔧 Optimizing pacman.conf & Cleaning Sessions...");
 
     let sessions_to_remove = vec![
-        "/usr/share/wayland-sessions/gnome.desktop",
         "/usr/share/wayland-sessions/gnome-classic.desktop",
         "/usr/share/wayland-sessions/gnome-classic-wayland.desktop",
     ];
@@ -1385,6 +1384,9 @@ fn configure_geoclue() -> Result<(), std::io::Error> {
             modified = true;
         } else if normalized.contains("googleapis.com") && normalized != new_url {
             *line = new_url.clone();
+            modified = true;
+        } else if normalized.starts_with("method=") && !normalized.contains("gmaps") {
+            *line = "method=gmaps".to_string();
             modified = true;
         }
     }
