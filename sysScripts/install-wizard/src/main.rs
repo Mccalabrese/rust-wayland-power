@@ -1559,7 +1559,7 @@ fn build_custom_apps(home: &Path) -> Result<(), std::io::Error> {
                                 }
                             }
                             if !should_update && target_exists {
-                                println!("   ℹ️  {} is already up to date.", filename);
+                                println!("   ✅  {} is already up to date.", filename);
                             }
                         }
                     }
