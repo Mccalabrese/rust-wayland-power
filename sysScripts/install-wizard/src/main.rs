@@ -266,7 +266,9 @@ fn main() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-    build_custom_apps(&home);
+    if let Err(e) = build_custom_apps(&home) {
+        println!("   ⚠️  Failed to build custom Rust apps: {}", e);
+    };
 
     println!(
         "\n{}",
@@ -1473,28 +1475,35 @@ fn expected_binary_names(app_path: &Path, app_name: &str) -> HashSet<String> {
 
 /// Builds custom Rust apps using native caching.
 /// If source files haven't changed, this takes milliseconds.
-fn build_custom_apps(home: &Path) {
+fn build_custom_apps(home: &Path) -> Result<(), std::io::Error> {
     let repo_root = get_repo_root();
     let sys_scripts_dir = repo_root.join("sysScripts");
 
     // Ensure ~/.cargo/bin exists
     let cargo_bin_dir = home.join(".cargo/bin");
-    let _ = fs::create_dir_all(&cargo_bin_dir);
+
+    fs::create_dir_all(&cargo_bin_dir)?;
 
     if let Ok(entries) = fs::read_dir(&sys_scripts_dir) {
         for entry in entries.flatten() {
             let app_path = entry.path();
             if app_path.is_dir() && app_path.join("Cargo.toml").exists() {
-                let app_name = app_path.file_name().unwrap().to_str().unwrap();
+                let app_name = match app_path.file_name().and_then(|n| n.to_str()) {
+                    Some(name) => name,
+                    None => {
+                        println!("   ⚠️  Skipping app with invalid name at {:?}", app_path);
+                        continue;
+                    }
+                };
+                //let app_name = app_path.file_name().unwrap().to_str().unwrap();
                 let status = Command::new("cargo")
                     .args(["build", "--release", "-q"])
                     .current_dir(&app_path)
                     .status();
 
-                if status.is_ok() && status.unwrap().success() {
+                if status.is_ok_and(|s| s.success()) {
                     let release_dir = app_path.join("target/release");
                     let expected_bins = expected_binary_names(&app_path, app_name);
-                    let mut synced_any = false;
 
                     if let Ok(bin_entries) = fs::read_dir(&release_dir) {
                         for bin_entry in bin_entries.flatten() {
@@ -1526,33 +1535,45 @@ fn build_custom_apps(home: &Path) {
                             let target_bin = cargo_bin_dir.join(&filename);
                             let compiled_time = fs::metadata(&bin_path).and_then(|m| m.modified());
                             let target_time = fs::metadata(&target_bin).and_then(|m| m.modified());
+                            let target_exists = target_bin.exists();
                             let should_update = match (compiled_time, target_time) {
                                 (Ok(c_time), Ok(t_time)) => c_time > t_time,
-                                (Ok(_), Err(_)) => true,
+                                (_, Err(_)) => true,
                                 _ => false,
                             };
-
                             if should_update {
                                 if target_bin.exists() {
                                     let _ = fs::remove_file(&target_bin);
                                 }
-                                if fs::copy(&bin_path, &target_bin).is_ok() {
-                                    println!("       ✅ Synced binary: {}", filename);
-                                    synced_any = true;
+                                match fs::copy(&bin_path, &target_bin) {
+                                    Ok(_) => {
+                                        println!("   ✅ Synced binary: {}", filename);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("   ❌ Failed to sync {}: {}", filename, e);
+                                        return Err(std::io::Error::other(format!(
+                                            "Failed to sync {}: {}",
+                                            filename, e
+                                        )));
+                                    }
                                 }
+                            }
+                            if !should_update && target_exists {
+                                println!("   ℹ️  {} is already up to date.", filename);
                             }
                         }
                     }
-
-                    if !synced_any {
-                        println!("       ✔ {} is already up to date", app_name);
-                    }
                 } else {
                     println!("      ❌ Failed to build {}", app_name);
+                    return Err(std::io::Error::other(format!(
+                        "Failed to build {}",
+                        app_name
+                    )));
                 }
             }
         }
     }
+    Ok(())
 }
 /// Renames session files to enforce a specific order in Greetd/Tuigreet.
 /// Strategy: Move standard files (e.g. niri.desktop) to custom numbered files (10-niri.desktop).
