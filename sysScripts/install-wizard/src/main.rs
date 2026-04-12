@@ -330,12 +330,16 @@ fn main() {
     if !refresh_mode {
         if has_existing_install {
             // --- UPDATE MODE (safe for personal configs) ---
-            println!("\n{}", "🔧 Repairing managed symlink targets...".blue().bold());
+            println!(
+                "\n{}",
+                "🔧 Repairing managed symlink targets...".blue().bold()
+            );
             repair_repo_symlink_targets(&home, previous_repo_root.as_deref(), &repo_root);
             if let Err(e) = write_repo_root(&repo_root) {
                 eprintln!("   ⚠️ Failed to write repository root to config: {}", e);
             }
             patch_waybar_sidebar_toggle_path(&home);
+            ensure_tlp_symlink_and_service(&repo_root);
 
             print_logo();
             println!(
@@ -375,12 +379,16 @@ fn main() {
         }
     } else {
         // --- REFRESH MODE (Updater) ---
-        println!("\n{}", "🔧 Repairing managed symlink targets...".blue().bold());
+        println!(
+            "\n{}",
+            "🔧 Repairing managed symlink targets...".blue().bold()
+        );
         repair_repo_symlink_targets(&home, previous_repo_root.as_deref(), &repo_root);
         if let Err(e) = write_repo_root(&repo_root) {
             eprintln!("   ⚠️ Failed to write repository root to config: {}", e);
         }
         patch_waybar_sidebar_toggle_path(&home);
+        ensure_tlp_symlink_and_service(&repo_root);
 
         print_logo();
         println!(
@@ -401,18 +409,24 @@ fn migrate_legacy_users(home: &Path) {
 
     // If the old repo exists, we have a legacy user who needs rescuing
     if old_repo.exists() {
-        println!("\n{}", "🔄 Legacy installation detected. Silently migrating system...".magenta());
+        println!(
+            "\n{}",
+            "🔄 Legacy installation detected. Silently migrating system...".magenta()
+        );
 
         // 1. Move the physical folder to the new name
         // (This is safe because this binary is currently running from ~/.cargo/bin/)
-        if !new_repo.exists() {
-            if let Err(e) = fs::rename(&old_repo, &new_repo) {
+        if !new_repo.exists()
+            && let Err(e) = fs::rename(&old_repo, &new_repo) {
                 eprintln!("   ⚠️ Failed to rename repository folder: {}", e);
                 return; // Abort migration, let them safely remain on the old folder for now
             }
-        }
 
-        let active_repo = if new_repo.exists() { &new_repo } else { &old_repo };
+        let active_repo = if new_repo.exists() {
+            &new_repo
+        } else {
+            &old_repo
+        };
 
         // 2. Preserve transport (SSH vs HTTPS) and only swap repo path.
         if let Ok(output) = Command::new("git")
@@ -450,9 +464,13 @@ fn migrate_legacy_users(home: &Path) {
 }
 
 fn write_repo_root(repo_root: &Path) -> Result<(), std::io::Error> {
-    let home = dirs::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found"))?;
+    let home = dirs::home_dir().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")
+    })?;
     let config_path = home.join(".config/rust-dotfiles/config.toml");
-    let repo_root_str = repo_root.to_str().ok_or_else(|| std::io::Error::other("Invalid repo root path"))?;
+    let repo_root_str = repo_root
+        .to_str()
+        .ok_or_else(|| std::io::Error::other("Invalid repo root path"))?;
     let config_str = fs::read_to_string(&config_path)?;
     let updated_toml = upsert_repo_root_in_config(&config_str, repo_root_str);
     if updated_toml != config_str {
@@ -477,7 +495,12 @@ fn upsert_repo_root_in_config(content: &str, repo_root: &str) -> String {
         }
 
         let mut root_idx = None;
-        for (idx, line) in lines.iter().enumerate().take(section_end).skip(repo_idx + 1) {
+        for (idx, line) in lines
+            .iter()
+            .enumerate()
+            .take(section_end)
+            .skip(repo_idx + 1)
+        {
             let normalized = line.trim_start().trim_start_matches('#').trim_start();
             if normalized.starts_with("root") && normalized.contains('=') {
                 root_idx = Some(idx);
@@ -1899,7 +1922,11 @@ fn create_symlink(src: &Path, dest: &Path) {
 
 /// During updates, only repair symlinks that were previously managed by this repo.
 /// Never rewrite regular files/directories in the user's config.
-fn repair_repo_symlink_targets(home: &Path, previous_repo_root: Option<&Path>, active_repo_root: &Path) {
+fn repair_repo_symlink_targets(
+    home: &Path,
+    previous_repo_root: Option<&Path>,
+    active_repo_root: &Path,
+) {
     let managed_links = [
         (".tmux.conf", ".tmux.conf"),
         (".profile", ".profile"),
@@ -1971,9 +1998,7 @@ fn maybe_repair_symlink(
         return;
     }
 
-    if fs::remove_file(dest).is_ok()
-        && std::os::unix::fs::symlink(expected_target, dest).is_ok()
-    {
+    if fs::remove_file(dest).is_ok() && std::os::unix::fs::symlink(expected_target, dest).is_ok() {
         println!(
             "   ✅ Repaired symlink: {} -> {}",
             dest.display(),
@@ -2032,12 +2057,70 @@ fn patch_waybar_sidebar_toggle_path(home: &Path) {
     updated.push_str(&content[block_end + 1..]);
 
     match fs::write(&modules_path, updated) {
-        Ok(()) => println!("   ✅ Updated Waybar sidebar_toggle path in {}", modules_path.display()),
+        Ok(()) => println!(
+            "   ✅ Updated Waybar sidebar_toggle path in {}",
+            modules_path.display()
+        ),
         Err(e) => eprintln!(
             "   ⚠️ Failed to update Waybar sidebar_toggle path in {}: {}",
             modules_path.display(),
             e
         ),
+    }
+}
+
+/// Ensures /etc/tlp.conf follows the current repo root and restarts TLP only when needed.
+fn ensure_tlp_symlink_and_service(repo_root: &Path) {
+    let tlp_src = repo_root.join("tlp.conf");
+    if !tlp_src.exists() {
+        eprintln!(
+            "   ⚠️ Skipping TLP relink: source file not found at {}",
+            tlp_src.display()
+        );
+        return;
+    }
+
+    let desired = tlp_src.to_string_lossy().to_string();
+    let current = fs::read_link("/etc/tlp.conf")
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+
+    let mut relinked = false;
+    if current.as_deref() != Some(desired.as_str()) {
+        match Command::new("sudo")
+            .args(["ln", "-sf", desired.as_str(), "/etc/tlp.conf"])
+            .status()
+        {
+            Ok(status) if status.success() => {
+                relinked = true;
+                println!("   ✅ Updated /etc/tlp.conf symlink to {}", desired);
+            }
+            Ok(_) => eprintln!("   ⚠️ Failed to relink /etc/tlp.conf"),
+            Err(e) => eprintln!("   ⚠️ Failed to run sudo ln for /etc/tlp.conf: {}", e),
+        }
+    }
+
+    let _ = Command::new("sudo")
+        .args(["systemctl", "enable", "tlp.service"])
+        .status();
+
+    let is_active = Command::new("systemctl")
+        .args(["is-active", "--quiet", "tlp.service"])
+        .status()
+        .is_ok_and(|s| s.success());
+
+    if relinked || !is_active {
+        match Command::new("sudo")
+            .args(["systemctl", "restart", "tlp.service"])
+            .status()
+        {
+            Ok(status) if status.success() => println!("   ✅ TLP service restarted"),
+            Ok(_) => eprintln!("   ⚠️ Failed to restart TLP service"),
+            Err(e) => eprintln!(
+                "   ⚠️ Failed to run sudo systemctl restart tlp.service: {}",
+                e
+            ),
+        }
     }
 }
 /// Runs post-install hooks to set up themes and plugins.
@@ -2093,7 +2176,10 @@ fn get_repo_root() -> Result<PathBuf, std::io::Error> {
     let cwd = std::env::current_dir()?;
 
     for ancestor in cwd.ancestors() {
-        if ancestor.join("sysScripts/install-wizard/Cargo.toml").exists() {
+        if ancestor
+            .join("sysScripts/install-wizard/Cargo.toml")
+            .exists()
+        {
             return Ok(ancestor.to_path_buf());
         }
 
@@ -2107,7 +2193,9 @@ fn get_repo_root() -> Result<PathBuf, std::io::Error> {
         }
     }
 
-    Err(std::io::Error::other("Could not determine repository root from current directory"))
+    Err(std::io::Error::other(
+        "Could not determine repository root from current directory",
+    ))
 }
 
 fn read_repo_root_from_config(home: &Path) -> Option<PathBuf> {
@@ -2178,7 +2266,9 @@ fn resolve_repo_root(home: &Path) -> Result<PathBuf, std::io::Error> {
         return Ok(legacy);
     }
 
-    Err(std::io::Error::other("Repository root could not be resolved"))
+    Err(std::io::Error::other(
+        "Repository root could not be resolved",
+    ))
 }
 /// Reads /etc/pacman.conf and extracts any packages listed in IgnorePkg.
 fn get_ignored_packages() -> Vec<String> {
