@@ -60,9 +60,15 @@ struct UpdaterConfig {
 }
 
 #[derive(Deserialize, Debug)]
+struct RepoConfig {
+    root: String, // Path to the root of the dotfiles repo 
+}
+
+#[derive(Deserialize, Debug)]
 struct GlobalConfig {
     global: Global,
     updater: UpdaterConfig,
+    repo: Option<RepoConfig>,
 }
 
 /// Loads and parses the TOML configuration file.
@@ -79,6 +85,29 @@ fn load_config() -> Result<GlobalConfig> {
         .context("Failed to parse config.toml")?;
 
     Ok(config)
+}
+
+fn resolve_repo_path(repo_cfg: Option<&RepoConfig>) -> Option<PathBuf> {
+    if let Some(repo_cfg) = repo_cfg {
+        let configured_path = expand_path(&repo_cfg.root);
+        if configured_path.exists() {
+            return Some(configured_path);
+        }
+    }
+
+    let home = dirs::home_dir()?;
+
+    let preferred = home.join("Genoa");
+    if preferred.exists() {
+        return Some(preferred);
+    }
+
+    let legacy = home.join("rust-wayland-power");
+    if legacy.exists() {
+        return Some(legacy);
+    }
+
+    None
 }
 
 // 🐧🐧🐧 Helper Functions 🐧🐧🐧
@@ -112,6 +141,9 @@ fn main() -> Result<()> {
     let config = load_config()?;
     let global_conf = config.global;
     let updater_conf = config.updater;
+    let repo_path = resolve_repo_path(config.repo.as_ref())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     // Resolve relative paths
     let icon_error = expand_path(&updater_conf.icon_error);
@@ -138,6 +170,12 @@ EOF
         {}
         sys_exit=$?
 
+        REPO_PATH="{}"
+        REPO_AVAILABLE=0
+        if [ -n "$REPO_PATH" ] && [ -d "$REPO_PATH/.git" ]; then
+            REPO_AVAILABLE=1
+        fi
+
         # --- 2. FIRMWARE UPDATE ---
         if [ $sys_exit -eq 0 ]; then
             echo -e "\n\n🔌 Checking for Firmware Updates..."
@@ -159,8 +197,8 @@ EOF
         # --- 3. SURGICAL REPO SYNC ---
         if [ $sys_exit -eq 0 ]; then
             echo -e "\n\n🦀 Checking for Rust Script Updates..."
-            if [ -d "$HOME/rust-wayland-power/.git" ]; then
-                cd "$HOME/rust-wayland-power"
+            if [ $REPO_AVAILABLE -eq 1 ]; then
+                cd "$REPO_PATH"
 
                 echo "Fetching remote..."
                 git fetch origin main
@@ -176,31 +214,37 @@ EOF
                     git checkout origin/main -- sysScripts pkglist.txt
                     echo -e "✅ Files synced. Wizard will compile changes."
                 else
-                     echo "✔ Rust tools and packages are up to date."
+                    echo "✔ Rust tools and packages are up to date."
                 fi
+            else
+                echo "⚠️ Repo not found. Skipping surgical sync."
             fi
         fi
 
         # --- 4. REFRESH CONFIGS & PACKAGES ---
         if [ $sys_exit -eq 0 ]; then
             echo -e "\n\n🔄 Applying Machine State..."
-            echo "   🏗️ Checking installer for updates..."
-            cd "$HOME/rust-wayland-power/sysScripts/install-wizard"
-            cargo build --release -q
+              if [ $REPO_AVAILABLE -eq 1 ] && [ -d "$REPO_PATH/sysScripts/install-wizard" ]; then
+                 echo "   🏗️ Checking installer for updates..."
+                 cd "$REPO_PATH/sysScripts/install-wizard"
+                 cargo build --release -q
 
-            if [ target/release/install-wizard -nt "$HOME/.cargo/bin/install-wizard" ]; then
-                echo "  🌠 Updating installer binary..."
-                cp target/release/install-wizard "$HOME/.cargo/bin/"
-            fi
+                 if [ target/release/install-wizard -nt "$HOME/.cargo/bin/install-wizard" ]; then
+                    echo "  🌠 Updating installer binary..."
+                    cp target/release/install-wizard "$HOME/.cargo/bin/"
+                 fi
 
-            INSTALLER_BIN="$HOME/.cargo/bin/install-wizard"
+                 INSTALLER_BIN="$HOME/.cargo/bin/install-wizard"
 
-            if [ -f "$INSTALLER_BIN" ]; then
-                 # NOTE: Dropped 'sudo' here. Wizard elevates internally!
-                 "$INSTALLER_BIN" --refresh-configs
+                 if [ -f "$INSTALLER_BIN" ]; then
+                     # NOTE: Dropped 'sudo' here. Wizard elevates internally!
+                     REPO_ROOT="$REPO_PATH" "$INSTALLER_BIN" --refresh-configs
+                 else
+                     echo "⚠️ Installer binary not found. Skipping config refresh."
+                     echo "Run 'cargo build --release' in sysScripts/install-wizard to fix."
+                 fi
             else
-                 echo "⚠️ Installer binary not found. Skipping config refresh."
-                 echo "Run 'cargo build --release' in sysScripts/install-wizard to fix."
+                 echo "⚠️ Repo not found. Skipping config refresh."
             fi
         fi
 
@@ -210,7 +254,8 @@ EOF
         if [ $sys_exit -ne 0 ]; then exit 1; else exit 0; fi
         "#,
         LOGO,
-        update_cmd_str
+        update_cmd_str,
+        repo_path
     );  
 
     // Interactive Execution

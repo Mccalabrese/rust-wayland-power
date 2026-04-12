@@ -3,6 +3,9 @@
 pager = "bat --paging=always --style=plain"
 terminal = "ghostty"
 
+[repo]
+root = "~/Genoa"
+
 # -------------------------------
 # [kb_launcher]
 # Settings for our keybind launcher

@@ -33,6 +33,11 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+NEW_REPO_NAME="Genoa"
+LEGACY_REPO_NAME="rust-wayland-power"
+NEW_REPO_URL="https://github.com/Mccalabrese/Genoa.git"
+LEGACY_REPO_URL="https://github.com/Mccalabrese/rust-wayland-power.git"
+
 echo -e "${BLUE}🔵 [Stage 1] Bootstrapping Environment...${NC}"
 
 # 1. Security Check: Root Privileges
@@ -67,9 +72,13 @@ sudo pacman -Syu --noconfirm archlinux-keyring pacman-mirrorlist
 if [ -f "sysScripts/install-wizard/Cargo.toml" ]; then
   echo "✅ Running from inside repository."
   REPO_ROOT="$PWD"
-elif [ -d "rust-wayland-power" ]; then
+elif [ -d "$NEW_REPO_NAME" ]; then
   echo -e "${GREEN}📂 Found existing repository. Resuming installation...${NC}"
-  cd rust-wayland-power
+  cd "$NEW_REPO_NAME"
+  REPO_ROOT="$PWD"
+elif [ -d "$LEGACY_REPO_NAME" ]; then
+  echo -e "${GREEN}📂 Found existing repository. Resuming installation...${NC}"
+  cd "$LEGACY_REPO_NAME"
   REPO_ROOT="$PWD"
 else
   if [ -d ".git" ]; then
@@ -82,10 +91,16 @@ else
       sudo pacman -S --needed --noconfirm git
     fi
 
-    # Clone the repo
-    git clone https://github.com/Mccalabrese/rust-wayland-power.git
-    cd rust-wayland-power
-    REPO_ROOT="$PWD"
+    # Clone the repo (prefer the new canonical location, then fallback)
+    if git clone "$NEW_REPO_URL" "$NEW_REPO_NAME"; then
+      cd "$NEW_REPO_NAME"
+      REPO_ROOT="$PWD"
+    else
+      echo -e "${BLUE}Primary repository clone failed. Trying legacy URL...${NC}"
+      git clone "$LEGACY_REPO_URL" "$LEGACY_REPO_NAME"
+      cd "$LEGACY_REPO_NAME"
+      REPO_ROOT="$PWD"
+    fi
   fi
 fi
 
@@ -118,9 +133,11 @@ fi
 
 cd "$REPO_ROOT/sysScripts/install-wizard"
 
-# Build and execute the Rust installer in Release mode for speed.
+# Build and execute the Rust installer in Release mode for speed and pass the REPO_ROOT to the installer.
 # The Rust binary handles the complex logic, hardware detection, and UI.
-cargo run --release
+# export REPO_ROOT="$REPO_ROOT"
+# cargo run --release
+REPO_ROOT="$REPO_ROOT" cargo run --release
 
 # If Rust exits with 0, we are done.
 if [ $? -eq 0 ]; then

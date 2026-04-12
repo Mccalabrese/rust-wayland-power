@@ -69,6 +69,10 @@ const AUR_PACKAGES: &[&str] = &[
     "pear-desktop-bin",
     "librewolf-bin",
 ];
+
+const NEW_REPO_DIR: &str = "Genoa";
+const LEGACY_REPO_DIR: &str = "rust-wayland-power";
+const NEW_REPO_REMOTE: &str = "https://github.com/Mccalabrese/Genoa.git";
 // ---------- Main Execution ------_-------
 
 // ---------- Main Execution -----------------
@@ -81,7 +85,6 @@ fn main() {
         );
         std::process::exit(1);
     });
-
     // 🚨 PREVENT FATAL ROOT EXECUTION 🚨
     // If run with sudo, home_dir() points to /root, which breaks dotfiles and cargo paths.
     if std::env::var("USER").unwrap_or_default() == "root" || std::env::var("SUDO_USER").is_ok() {
@@ -95,6 +98,13 @@ fn main() {
         eprintln!("The script is designed to safely elevate privileges internally when needed.");
         std::process::exit(1);
     }
+    migrate_legacy_users(&home);
+
+    let repo_root = resolve_repo_root(&home).unwrap_or_else(|e| {
+        eprintln!("❌ Error determining repository root: {}", e);
+        std::process::exit(1);
+    });
+
     // 0. Parse Arguments
     let args: Vec<String> = std::env::args().collect();
     let refresh_mode = args.contains(&"--refresh-configs".to_string());
@@ -226,7 +236,7 @@ fn main() {
 
     // 1. Sync Standard & AUR Packages
     println!("\n{}", "📦 Syncing Standard Packages...".blue().bold());
-    let mut common_pkgs = match load_packages_from_file("pkglist.txt") {
+    let mut common_pkgs = match load_packages_from_file("pkglist.txt", &repo_root) {
         Ok(pkgs) => pkgs,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             println!("   ⚠️  pkglist.txt not found. Skipping package installation.");
@@ -266,7 +276,7 @@ fn main() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-    if let Err(e) = build_custom_apps(&home) {
+    if let Err(e) = build_custom_apps(&home, &repo_root) {
         println!("   ⚠️  Failed to build custom Rust apps: {}", e);
     };
 
@@ -308,7 +318,7 @@ fn main() {
     if !refresh_mode {
         // --- FRESH INSTALL ONLY ---
         println!("\n{}", "🔗 Linking Config Files...".blue().bold());
-        link_dotfiles_and_copy_resources(&home);
+        link_dotfiles_and_copy_resources(&home, &repo_root);
 
         if let Err(e) = configure_system(&home) {
             eprintln!("   ❌ Failed to configure system services: {}", e);
@@ -321,6 +331,9 @@ fn main() {
         setup_waybar_configs(&home);
         if let Err(e) = setup_secrets_and_geoclue(&home) {
             eprintln!("   ⚠️ Failed to set up secrets and geoclue: {}", e);
+        }
+        if let Err(e) = write_repo_root(&repo_root) {
+            eprintln!("   ⚠️ Failed to write repository root to config: {}", e);
         }
         finalize_setup(&home); // Neovim/Tmux plugins
 
@@ -342,11 +355,99 @@ fn main() {
 }
 
 // --- Helper functions ---
+/// Silently transitions existing users from the legacy hardcoded paths
+/// to the new dynamic, config-driven architecture.
+fn migrate_legacy_users(home: &Path) {
+    let old_repo = home.join(LEGACY_REPO_DIR);
+    let new_repo = home.join(NEW_REPO_DIR);
+
+    // If the old repo exists, we have a legacy user who needs rescuing
+    if old_repo.exists() {
+        println!("\n{}", "🔄 Legacy installation detected. Silently migrating system...".magenta());
+
+        // 1. Move the physical folder to the new name
+        // (This is safe because this binary is currently running from ~/.cargo/bin/)
+        if !new_repo.exists() {
+            if let Err(e) = fs::rename(&old_repo, &new_repo) {
+                eprintln!("   ⚠️ Failed to rename repository folder: {}", e);
+                return; // Abort migration, let them safely remain on the old folder for now
+            }
+        }
+
+        let active_repo = if new_repo.exists() { &new_repo } else { &old_repo };
+
+        // 2. Update the Git Remote so future pulls skip the GitHub redirect overhead
+        let _ = Command::new("git")
+            .current_dir(active_repo)
+            .args(["remote", "set-url", "origin", NEW_REPO_REMOTE])
+            .status();
+
+        // 3. Generate the new config.toml and burn the new path into it
+        let _ = write_repo_root(active_repo);
+
+        println!("   ✅ Migration complete. Welcome to the new architecture.");
+    }
+}
+
+fn write_repo_root(repo_root: &Path) -> Result<(), std::io::Error> {
+    let home = dirs::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found"))?;
+    let config_path = home.join(".config/rust-dotfiles/config.toml");
+    let repo_root_str = repo_root.to_str().ok_or_else(|| std::io::Error::other("Invalid repo root path"))?;
+    let config_str = fs::read_to_string(&config_path)?;
+    let updated_toml = upsert_repo_root_in_config(&config_str, repo_root_str);
+    if updated_toml != config_str {
+        fs::write(&config_path, updated_toml)?;
+    }
+    Ok(())
+}
+
+fn upsert_repo_root_in_config(content: &str, repo_root: &str) -> String {
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let escaped_root = repo_root.replace('\\', "\\\\").replace('"', "\\\"");
+    let root_line = format!("root = \"{}\"", escaped_root);
+
+    if let Some(repo_idx) = lines.iter().position(|l| l.trim() == "[repo]") {
+        let mut section_end = lines.len();
+        for (idx, line) in lines.iter().enumerate().skip(repo_idx + 1) {
+            let trimmed = line.trim();
+            if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                section_end = idx;
+                break;
+            }
+        }
+
+        let mut root_idx = None;
+        for (idx, line) in lines.iter().enumerate().take(section_end).skip(repo_idx + 1) {
+            let normalized = line.trim_start().trim_start_matches('#').trim_start();
+            if normalized.starts_with("root") && normalized.contains('=') {
+                root_idx = Some(idx);
+                break;
+            }
+        }
+
+        if let Some(idx) = root_idx {
+            lines[idx] = root_line;
+        } else {
+            lines.insert(repo_idx + 1, root_line);
+        }
+    } else {
+        if !lines.is_empty() && !lines.last().is_some_and(|line| line.trim().is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push("[repo]".to_string());
+        lines.push(root_line);
+    }
+
+    let mut updated = lines.join("\n");
+    if !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated
+}
 
 /// Reads a package list from a text file (one package per line).
 /// Ignores empty lines and comments starting with '#'.
-fn load_packages_from_file(filename: &str) -> std::io::Result<Vec<String>> {
-    let repo_root = get_repo_root();
+fn load_packages_from_file(filename: &str, repo_root: &Path) -> std::io::Result<Vec<String>> {
     let path = repo_root.join(filename);
 
     let content = fs::read_to_string(&path)?;
@@ -1475,8 +1576,7 @@ fn expected_binary_names(app_path: &Path, app_name: &str) -> HashSet<String> {
 
 /// Builds custom Rust apps using native caching.
 /// If source files haven't changed, this takes milliseconds.
-fn build_custom_apps(home: &Path) -> Result<(), std::io::Error> {
-    let repo_root = get_repo_root();
+fn build_custom_apps(home: &Path, repo_root: &Path) -> Result<(), std::io::Error> {
     let sys_scripts_dir = repo_root.join("sysScripts");
 
     // Ensure ~/.cargo/bin exists
@@ -1646,9 +1746,7 @@ fn enforce_session_order(is_nvidia: bool) {
 }
 
 ///Walks through dotfiles in repo and symlinks them to home directory.
-fn link_dotfiles_and_copy_resources(home: &Path) {
-    let repo_root = get_repo_root();
-
+fn link_dotfiles_and_copy_resources(home: &Path, repo_root: &Path) {
     let links = vec![
         (".tmux.conf", ".tmux.conf"),
         (".profile", ".profile"),
@@ -1784,18 +1882,98 @@ fn finalize_setup(home: &Path) {
     }
 }
 /// Reliably finds the root of the dotfiles repository regardless of where the binary is executed.
-fn get_repo_root() -> PathBuf {
-    // This macro captures the absolute path of the 'install-wizard' folder AT COMPILE TIME.
-    // e.g., "/home/michael/path/to/rust-wayland-power/sysScripts/install-wizard"
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+fn get_repo_root() -> Result<PathBuf, std::io::Error> {
+    // Prefer deriving the repo from the current working directory so this works for
+    // both `cargo run` and installed binaries invoked from the repo.
+    let cwd = std::env::current_dir()?;
 
-    // Navigate up two levels: install-wizard -> sysScripts -> repo_root
-    Path::new(manifest_dir)
-        .parent()
-        .expect("Could not find sysScripts parent")
-        .parent()
-        .expect("Could not find repo root parent")
-        .to_path_buf()
+    for ancestor in cwd.ancestors() {
+        if ancestor.join("sysScripts/install-wizard/Cargo.toml").exists() {
+            return Ok(ancestor.to_path_buf());
+        }
+
+        if ancestor.file_name().and_then(|n| n.to_str()) == Some("install-wizard")
+            && ancestor.join("Cargo.toml").exists()
+            && let Some(sys_scripts) = ancestor.parent()
+            && sys_scripts.file_name().and_then(|n| n.to_str()) == Some("sysScripts")
+            && let Some(repo_root) = sys_scripts.parent()
+        {
+            return Ok(repo_root.to_path_buf());
+        }
+    }
+
+    Err(std::io::Error::other("Could not determine repository root from current directory"))
+}
+
+fn read_repo_root_from_config(home: &Path) -> Option<PathBuf> {
+    let config_path = home.join(".config/rust-dotfiles/config.toml");
+    let contents = fs::read_to_string(config_path).ok()?;
+
+    let mut in_repo_section = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_repo_section = trimmed == "[repo]";
+            continue;
+        }
+
+        if !in_repo_section {
+            continue;
+        }
+
+        let normalized = trimmed.trim_start_matches('#').trim_start();
+        if !normalized.starts_with("root") {
+            continue;
+        }
+
+        let (_, rhs) = normalized.split_once('=')?;
+        let value = rhs.trim().trim_matches('"').trim_matches('\'');
+        if value.is_empty() {
+            return None;
+        }
+
+        if let Some(stripped) = value.strip_prefix("~/") {
+            return Some(home.join(stripped));
+        }
+
+        return Some(PathBuf::from(value));
+    }
+
+    None
+}
+
+fn resolve_repo_root(home: &Path) -> Result<PathBuf, std::io::Error> {
+    if let Ok(env_path) = std::env::var("REPO_ROOT") {
+        let path = PathBuf::from(env_path);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    if let Some(path) = read_repo_root_from_config(home)
+        && path.exists()
+    {
+        return Ok(path);
+    }
+
+    if let Ok(path) = get_repo_root()
+        && path.exists()
+    {
+        return Ok(path);
+    }
+
+    let preferred = home.join(NEW_REPO_DIR);
+    if preferred.exists() {
+        return Ok(preferred);
+    }
+
+    let legacy = home.join(LEGACY_REPO_DIR);
+    if legacy.exists() {
+        return Ok(legacy);
+    }
+
+    Err(std::io::Error::other("Repository root could not be resolved"))
 }
 /// Reads /etc/pacman.conf and extracts any packages listed in IgnorePkg.
 fn get_ignored_packages() -> Vec<String> {
