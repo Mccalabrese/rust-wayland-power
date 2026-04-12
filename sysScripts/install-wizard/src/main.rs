@@ -335,6 +335,7 @@ fn main() {
             if let Err(e) = write_repo_root(&repo_root) {
                 eprintln!("   ⚠️ Failed to write repository root to config: {}", e);
             }
+            patch_waybar_sidebar_toggle_path(&home);
 
             print_logo();
             println!(
@@ -357,6 +358,7 @@ fn main() {
                 eprintln!("   ⚠️ Failed to configure LibreWolf: {}", e);
             }
             setup_waybar_configs(&home);
+            patch_waybar_sidebar_toggle_path(&home);
             if let Err(e) = setup_secrets_and_geoclue(&home) {
                 eprintln!("   ⚠️ Failed to set up secrets and geoclue: {}", e);
             }
@@ -378,6 +380,7 @@ fn main() {
         if let Err(e) = write_repo_root(&repo_root) {
             eprintln!("   ⚠️ Failed to write repository root to config: {}", e);
         }
+        patch_waybar_sidebar_toggle_path(&home);
 
         print_logo();
         println!(
@@ -1976,6 +1979,65 @@ fn maybe_repair_symlink(
             dest.display(),
             expected_target.display()
         );
+    }
+}
+
+/// Surgical rewrite: only updates the sidebar_toggle on-click path in ModulesCustom.
+fn patch_waybar_sidebar_toggle_path(home: &Path) {
+    let modules_path = home.join(".config/waybar/ModulesCustom");
+    let Ok(content) = fs::read_to_string(&modules_path) else {
+        return;
+    };
+
+    let Some(entry_start) = content.find("\"custom/sidebar_toggle\"") else {
+        return;
+    };
+    let Some(open_brace_rel) = content[entry_start..].find('{') else {
+        return;
+    };
+
+    let block_start = entry_start + open_brace_rel;
+    let mut depth = 0;
+    let mut block_end = None;
+
+    for (offset, ch) in content[block_start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    block_end = Some(block_start + offset);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let Some(block_end) = block_end else {
+        return;
+    };
+
+    let old_path = "$HOME/rust-wayland-power/sidebar-toggle";
+    let new_path = "$HOME/Genoa/sidebar-toggle";
+    let block = &content[block_start..=block_end];
+    if !block.contains(old_path) {
+        return;
+    }
+
+    let updated_block = block.replacen(old_path, new_path, 1);
+    let mut updated = String::with_capacity(content.len() - block.len() + updated_block.len());
+    updated.push_str(&content[..block_start]);
+    updated.push_str(&updated_block);
+    updated.push_str(&content[block_end + 1..]);
+
+    match fs::write(&modules_path, updated) {
+        Ok(()) => println!("   ✅ Updated Waybar sidebar_toggle path in {}", modules_path.display()),
+        Err(e) => eprintln!(
+            "   ⚠️ Failed to update Waybar sidebar_toggle path in {}: {}",
+            modules_path.display(),
+            e
+        ),
     }
 }
 /// Runs post-install hooks to set up themes and plugins.

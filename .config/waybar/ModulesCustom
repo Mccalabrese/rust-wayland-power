@@ -203,7 +203,7 @@
 
 "custom/sidebar_toggle": {
   "format": "  ",
-  "on-click": "$HOME/rust-wayland-power/sidebar-toggle"
+  "on-click": "$HOME/Genoa/sidebar-toggle",
 },
 // Separators
 "custom/separator#dot": {
